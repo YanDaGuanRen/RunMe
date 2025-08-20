@@ -67,8 +67,6 @@ namespace RunMe
         {
             FormInit();
             CfgInit();
-
-
             // 如果没有传入命令行参数
             if (args.Length == 0)
             {
@@ -284,13 +282,14 @@ yanbincfg.ini 为 UTF16 LF";
                         "Config",
                         new Dictionary<string, string>
                         {
-                            { "RunMe", "runme VS Code|c:\\,VS Studio|D:\\" },
+                            { "RunMe", "http:\\www.bing.com" },
                             { "RunMe1", "List exe d:\\" },
                             { "RunMe2", "List exe tools" },
                             { "RunMe3", "runme VS Code|vc,VS Studio|vs" },
                             { "RunMe4", "runme VS Code|c:\\,VS Studio|D:\\" },
                             { "RunMe5", "vs" },
-                            { "RunMe6", "help" }
+                            { "RunMe6", "http:\\www.bing.com" },
+                            { "RunMe7", "help" }
                         }
                     }
                 };
@@ -317,7 +316,7 @@ yanbincfg.ini 为 UTF16 LF";
             else
             {
                 // 从配置文件中读取与当前程序名对应的值
-                string upath = ReadValue("Config", RunExeName);
+                string upath = ReadValue("Config", rname);
 
                 if (!string.IsNullOrEmpty(upath))
                 {
@@ -356,9 +355,10 @@ yanbincfg.ini 为 UTF16 LF";
             // 获取当前可执行文件名并移除.exe扩展名
             RunExeName = Path.GetFileName(Application.ExecutablePath).Replace(".exe", "");
             // 获取当前目录的上两级目录路径
+            YanBinCfgPath = Path.Combine(RunExePath, "YanBinCfg.ini");
+            
             RunParentDirectory = ReadValue("Settings", "RunParentDirectory");
 
-            YanBinCfgPath = Path.Combine(RunExePath, "YanBinCfg.ini");
         }
 
 
@@ -399,6 +399,11 @@ yanbincfg.ini 为 UTF16 LF";
             }
 
             if (upath.Substring(1, 2) == ":\\")
+            {
+                return upath;
+            }
+
+            if (upath.StartsWith("http"))
             {
                 return upath;
             }
@@ -512,14 +517,18 @@ yanbincfg.ini 为 UTF16 LF";
                 // 关闭窗体
                 base.Close();
             }
-            // 确保ListView在窗体加载时能获取焦点
-            listBox1.Focus();
-            
-            // 默认选中第一项
-            if (listBox1.Items.Count > 0)
+            else
             {
-                listBox1.SelectedIndex = 0;
+                // 确保ListView在窗体加载时能获取焦点
+                listBox1.Focus();
+
+                // 默认选中第一项
+                if (listBox1.Items.Count > 0)
+                {
+                    listBox1.SelectedIndex = 0;
+                }
             }
+
         }
 
         private void listBox1_KeyDown(object sender, KeyEventArgs e)

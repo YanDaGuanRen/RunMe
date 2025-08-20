@@ -369,3 +369,5 @@ FodyWeavers.xsd
 [Mm][Dd][Mm].*[Tt]ests/
 *.sln
 /Mdm.sln
+**/.idea
+**/.vscode
