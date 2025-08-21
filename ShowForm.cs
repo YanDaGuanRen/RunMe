@@ -78,6 +78,11 @@ namespace RunMe
                 ReplaceAll();
                 return;
             }
+            else if (args[0].ToLower() == "runmefth")
+            {
+                ReplaceAllX();
+                return;
+            }
             else if (args[0].ToLower() == "runme")
             {
                 RunRunme(args);
@@ -100,6 +105,68 @@ namespace RunMe
             }
         }
 
+        private void ReplaceAllX()
+        {
+            var oldlist = Directory.GetFiles(RunExePath, "*.exe", SearchOption.TopDirectoryOnly);
+            foreach (var se in oldlist)
+            {
+                // string programName = Path.GetFileNameWithoutExtension(se);
+                var fileInfo = new FileInfo(se);
+                if (fileInfo.Name.Replace(fileInfo.Extension,"").ToLower() != RunExeName.ToLower())
+                {
+                    fileInfo.Delete();
+                }
+            }
+            var list = ExtractConfigKeys(YanBinCfgPath);
+            var me = Path.Combine(RunExePath, RunExeName + ".exe");
+            foreach (var se in list)
+            {
+                var df = Path.Combine(RunExePath, se + ".exe");
+                File.Copy(me, df);
+            }
+        }
+        public List<string> ExtractConfigKeys(string filePath)
+        {
+            List<string> keys = new List<string>();
+            bool isInConfigSection = false;
+
+            // 读取文件所有行
+            foreach (string line in File.ReadAllLines(filePath))
+            {
+                // 去除行首尾空白
+                string trimmedLine = line.Trim();
+
+                // 跳过空行和注释行
+                if (string.IsNullOrEmpty(trimmedLine) || trimmedLine.StartsWith("#"))
+                    continue;
+
+                // 检测是否进入[Config]区块
+                if (trimmedLine.Trim().ToLower() == "[config]")
+                {
+                    isInConfigSection = true;
+                    continue;
+                }
+
+                // 检测是否离开[Config]区块（遇到下一个节点）
+                if (isInConfigSection && trimmedLine.StartsWith("[") && trimmedLine.EndsWith("]"))
+                {
+                    break;
+                }
+
+                // 在[Config]区块内，提取=号前面的键名
+                if (isInConfigSection)
+                {
+                    int equalsIndex = trimmedLine.IndexOf('=');
+                    if (equalsIndex > 0) // 确保有=号且键名不为空
+                    {
+                        string key = trimmedLine.Substring(0, equalsIndex).Trim();
+                        keys.Add(key);
+                    }
+                }
+            }
+
+            return keys;
+        }
         private void RunRunme(params string[] args)
         {
             if (args.Length < 1) return;
@@ -343,7 +410,7 @@ yanbincfg.ini 为 UTF16 LF";
             // 设置窗体名称
             Name = "ShowForm";
 
-            Text = "程序启动器";
+            Text = "很牛B的一个程序启动器";
             // 注册窗体加载事件处理程序
             Load += new EventHandler(this.ShowForm_Load);
             // 恢复窗体布局逻辑
