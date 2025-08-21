@@ -86,8 +86,9 @@ namespace RunMe
             else if (args[0].ToLower() == "runme")
             {
                 RunRunme(args);
+                return;
             }
-            else if (args[0].ToLower() == "list")
+            else if (args[0] == "list")
             {
                 // 如果参数少于3个
                 if (args.Length < 3) return;
@@ -230,14 +231,19 @@ namespace RunMe
 
         private void GetFilesList(string path, string Suffix)
         {
+            var list = ReadValue("Settings", "ExcludeExeName")?.Split(new []{'|'},StringSplitOptions.RemoveEmptyEntries);
+            if (list == null || list.Length < 1|| string.IsNullOrEmpty(list[0]))
+            {
+                list = new[] { "RunMe", "MeRun" };
+            }
             // 遍历所有文件
             foreach (string file in Directory.GetFiles(path))
             {
                 // 创建文件信息对象
                 FileInfo info = new FileInfo(file);
                 // 如果文件扩展名匹配且文件名不等于当前主模块名
-                if (info.Extension.ToLower() == Suffix.ToLower() &&
-                    info.Name != Process.GetCurrentProcess().MainModule.ModuleName)
+                var name = Regex.Replace(info.Name, info.Extension, "", RegexOptions.IgnoreCase);
+                if (info.Extension.ToLower() == Suffix.ToLower() &&  !list.Contains(name))
                 {
                     RunDict[info.Name.Replace(Suffix, "")] = info.FullName;
                 }
@@ -342,14 +348,14 @@ yanbincfg.ini 为 UTF16 LF";
                         new Dictionary<string, string>
                         {
                             { "RunParentDirectory", RunExePath },
-                            { "ExcludeExeName", "RunMe.exe|MeRun.Exe" }
+                            { "ExcludeExeName", "RunMe|MeRun" }
                         }
                     },
                     {
                         "Config",
                         new Dictionary<string, string>
                         {
-                            { "RunMe", "http:\\www.bing.com" },
+                            { "RunMe", "runme 中文测试1|RunMe6,中文测试2|RunMe7" },
                             { "RunMe1", "List exe d:\\" },
                             { "RunMe2", "List exe tools" },
                             { "RunMe3", "runme VS Code|vc,VS Studio|vs" },
@@ -465,7 +471,16 @@ yanbincfg.ini 为 UTF16 LF";
                 return upath;
             }
 
-            if (upath.Substring(1, 2) == ":\\")
+            if (upath.Length < 4)
+            {
+               var t = ReadValue("Config", upath);
+               if (!string.IsNullOrEmpty(t))
+               {
+                   upath = t;
+               }
+            }
+
+            if (upath.Length > 3 && upath.Substring(1, 2) == ":\\")
             {
                 return upath;
             }
@@ -554,7 +569,7 @@ yanbincfg.ini 为 UTF16 LF";
             }
 
             // 如果路径的第2、3个字符不是":\"且不以"http://"开头
-            if (upath.Substring(1, 2) != ":\\")
+            if (upath.Length > 3 &&  upath.Substring(1, 2) != ":\\")
             {
                 // 循环移除路径开头的反斜杠
                 while (upath[0] == '\\')
@@ -635,6 +650,7 @@ yanbincfg.ini 为 UTF16 LF";
             foreach (var section in iniContent)
             {
                 content.AppendLine($"[{section.Key}]");
+                content.AppendLine(); // 添加空行分隔段落
                 foreach (var keyValue in section.Value)
                 {
                     content.AppendLine($"{keyValue.Key}={keyValue.Value}");
@@ -643,19 +659,18 @@ yanbincfg.ini 为 UTF16 LF";
                 content.AppendLine(); // 添加空行分隔段落
             }
 
-            // 使用UTF-16编码和LF换行符保存文件
-            File.WriteAllText(filePath, content.ToString(), Encoding.Unicode);
+            // 使用UTF-8 with BOM编码保存文件
+            File.WriteAllText(filePath, content.ToString(), Encoding.UTF8);
 
-            // 将CRLF替换为LF（如果有）
-            var fileContent = File.ReadAllText(filePath, Encoding.Unicode);
-            fileContent = fileContent.Replace("\r\n", "\n");
-            File.WriteAllText(filePath, fileContent, Encoding.Unicode);
+            // // 将CRLF替换为LF（如果有）
+            // var fileContent = File.ReadAllText(filePath, Encoding.UTF8);
+            // fileContent = fileContent.Replace("\r\n", "\n");
+            // File.WriteAllText(filePath, fileContent, Encoding.UTF8);
         }
 
         /// <summary>
         /// 从INI配置文件中读取指定节和键的值
         /// </summary>
-        /// <param name="pathstr">配置文件路径</param>
         /// <param name="Section">节名称</param>
         /// <param name="Key">键名称</param>
         /// <returns>读取到的值</returns>
@@ -663,16 +678,40 @@ yanbincfg.ini 为 UTF16 LF";
         {
             try
             {
-                // 创建StringBuilder对象用于接收返回值
-                StringBuilder retVal = new StringBuilder(0x3_2000);
-                // 调用Windows API读取配置值
-                int num = GetPrivateProfileString(Section, Key, "", retVal, 0x3_2000, YanBinCfgPath);
-                // 返回读取到的字符串
-                return retVal.ToString();
+                // 使用UTF-8编码读取配置文件
+                if (File.Exists(YanBinCfgPath))
+                {
+                    using (var reader = new StreamReader(YanBinCfgPath, Encoding.UTF8))
+                    {
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            if (line.StartsWith("[" + Section + "]"))
+                            {
+                                while ((line = reader.ReadLine()) != null)
+                                {
+                                    if (line.StartsWith("[")) break;
+                                    
+                                    if (line.Contains("="))
+                                    {
+                                        var parts = line.Split(new[] { '=' }, 2);
+                                        if (parts[0].Trim() == Key)
+                                        {
+                                            return parts[1];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return "";
             }
-            catch
+            catch (Exception ex)
             {
-                // 发生异常时返回空字符串
+                // 记录异常信息
+                Console.WriteLine($"读取配置文件错误: {ex.Message}");
                 return "";
             }
         }
