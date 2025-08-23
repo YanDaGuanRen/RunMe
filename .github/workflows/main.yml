@@ -1,4 +1,4 @@
-name: RunMe Build
+name: Build .NET Framework 4.7.2 App
 
 on:
   push:
@@ -8,35 +8,33 @@ on:
 
 jobs:
   build:
+    runs-on: windows-latest
     strategy:
       matrix:
         configuration: [Release]
-
-    runs-on: windows-latest
-
-    env:
-      Project_Path: RunMe.csproj 
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 配置MSBuild
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      # 恢复NuGet依赖（针对.csproj）
-      - name: Restore dependencies
-        run: msbuild $env:Project_Path /t:Restore /p:Configuration=${{ matrix.configuration }}
+      - name: Restore NuGet packages
+        run: nuget restore RunMe.csproj  # 直接还原项目依赖（如果有NuGet包）
 
-      # 构建项目（使用.csproj而非.sln）
       - name: Build project
-        run: msbuild $env:Project_Path /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.7.2
+        run: |
+          msbuild RunMe.csproj `
+            /p:Configuration=${{ matrix.configuration }} `
+            /p:Platform="AnyCPU" `
+            /p:TargetFrameworkVersion=v4.7.2 `
+            /p:OutputPath=bin\${{ matrix.configuration }} `
+            /p:BaseOutputPath=bin\
 
-      # 上传构建产物
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: RunMe-${{ matrix.configuration }}
+          name: RunMe-Build
           path: |
-            **/bin/${{ matrix.configuration }}/*.exe
+            bin/Release/*.exe
