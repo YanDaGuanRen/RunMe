@@ -1,0 +1,61 @@
+name: .NET Desktop Build & Package
+
+# 触发条件：推送到 master 分支或对 master 分支的 PR
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        configuration: [Release]  # 构建 Debug 和 Release 版本
+
+    runs-on: windows-latest  # 运行在 Windows 环境（因项目是 Windows 窗体程序）
+
+    env:
+      # 替换为你的实际项目信息
+      Solution_Name: RunMe.sln                  # 解决方案文件名
+      #  Test_Project_Path: RunMe.Tests/RunMe.Tests.csproj  测试项目路径（若有）
+      Wap_Project_Directory: RunMe.Package      # Windows 应用打包项目目录（若使用）
+      Wap_Project_Path: RunMe.Package/RunMe.Package.wapproj  # 打包项目路径
+
+    steps:
+      # 步骤 1：拉取代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 步骤 2：安装 .NET Framework 4.7.2（你的项目依赖）
+      - name: Install .NET Framework 4.7.2
+        uses: microsoft/setup-dotnet@v4
+        with:
+          dotnet-version: 4.7.2  # 注意：实际可能需要通过其他方式安装，因 setup-dotnet 主要针对 .NET Core
+
+      # 步骤 3：配置 MSBuild（用于构建 .NET Framework 项目）
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      # 步骤 4：运行单元测试（若有）
+       #- name: Run unit tests
+       #  run: dotnet test $env:Test_Project_Path --configuration ${{ matrix.configuration }}
+
+      # 步骤 5：恢复项目依赖
+      - name: Restore dependencies
+        run: msbuild $env:Solution_Name /t:Restore /p:Configuration=${{ matrix.configuration }}
+
+      # 步骤 6：构建项目
+      - name: Build project
+        run: msbuild $env:Solution_Name /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU"
+
+      # 步骤 10：上传构建产物（如 EXE、MSIX 包）
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: RunMe-Build-${{ matrix.configuration }}
+          path: |
+            **/bin/${{ matrix.configuration }}/*.exe
+            **/AppPackages  # 若有打包产物
