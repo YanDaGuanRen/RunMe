@@ -10,12 +10,12 @@ jobs:
   build:
     strategy:
       matrix:
-        configuration: [Debug, Release]
+        configuration: [Release]
 
     runs-on: windows-latest
 
     env:
-      Project_Path: RunMe.csproj  # 替换为你的.csproj文件名（通常与项目名一致）
+      Project_Path: RunMe.csproj 
 
     steps:
       - name: Checkout code
