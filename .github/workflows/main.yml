@@ -1,6 +1,5 @@
 name: RunMe Build
 
-# 触发条件：推送到master分支或对master的PR
 on:
   push:
     branches: [ "master" ]
@@ -11,31 +10,30 @@ jobs:
   build:
     strategy:
       matrix:
-        configuration: [Release]  # 构建两种配置
+        configuration: [Debug, Release]
 
-    runs-on: windows-latest  # 必须用Windows环境
+    runs-on: windows-latest
 
     env:
-      Solution_Name: RunMe.sln  # 解决方案名称（根据实际文件确认）
+      Project_Path: RunMe.csproj  # 替换为你的.csproj文件名（通常与项目名一致）
 
     steps:
-      # 拉取代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 配置MSBuild（.NET Framework构建必需）
+      # 配置MSBuild
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      # 恢复NuGet依赖（如果项目有引用）
+      # 恢复NuGet依赖（针对.csproj）
       - name: Restore dependencies
-        run: msbuild $env:Solution_Name /t:Restore /p:Configuration=${{ matrix.configuration }}
+        run: msbuild $env:Project_Path /t:Restore /p:Configuration=${{ matrix.configuration }}
 
-      # 构建项目
+      # 构建项目（使用.csproj而非.sln）
       - name: Build project
-        run: msbuild $env:Solution_Name /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.7.2
+        run: msbuild $env:Project_Path /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.7.2
 
-      # 上传构建产物（包含可执行文件和配置文件）
+      # 上传构建产物
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
