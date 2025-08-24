@@ -322,7 +322,10 @@ namespace RunMe
 
                 if (requiredParams > 0)
                 {
-                    runarg = string.Format(runname, args.Concat(Enumerable.Repeat("", requiredParams)).Take(requiredParams).ToArray());
+                    runname = ProcessPlaceholders(runname);
+                    var templist = args.Concat(Enumerable.Repeat(" ", requiredParams)).Take(requiredParams);
+                    
+                    runarg = string.Format(runname, templist.ToArray());
                 }
                 else
                 {
@@ -419,7 +422,7 @@ namespace RunMe
                         {
                             {
                                 "Nug2",
-                                "dotnet nuget push {1} --api-key {0} --source https://api.nuget.org/v3/index.json"
+                                "dotnet nuget push {0} --api-key {1} --source https://api.nuget.org/v3/index.json # 这样的占位符只能在ExecProcess ExecCmd" 
                             }
                         }
                     },
@@ -451,12 +454,13 @@ namespace RunMe
         {
             var content = new StringBuilder();
 
-            content.AppendLine(@"以下全局可用");
+            content.AppendLine(@"#以下全局可用");
             content.AppendLine(@"#{time.格式} - 使用当前时间并按照指定格式格式化");
             content.AppendLine(@"#{env.变量名} - 获取指定的环境变量值 在Settings项中设置" );
             content.AppendLine(@"#{guid.id} - 生成一个新的 GUID");
             content.AppendLine(@"#{random.最小值-最大值} - 生成指定范围内的随机数");
             content.AppendLine(); // 添加空行分隔段落
+            content.AppendLine(@"#占位符{0} 只能在ExecCmd与ExecProcess使用");
             content.AppendLine(); // 添加空行分隔段落
 
             foreach (var section in iniContent)
@@ -464,7 +468,7 @@ namespace RunMe
                 if (section.Key.ToLower() == "Config".ToLower())
                 {
                     content.AppendLine(); // 添加空行分隔段落
-                    content.AppendLine(@"以下Config可用");
+                    content.AppendLine(@"#以下Config可用");
                     content.AppendLine(@"#pf = 从C到G盘的Program Files目录");
                     content.AppendLine(@"#pf86 = 从C到G盘的Program Files (x86)目录)");
                     content.AppendLine(@"#AppData = 用户目录");
@@ -614,7 +618,7 @@ namespace RunMe
                 if (content.StartsWith("env.", StringComparison.OrdinalIgnoreCase))
                 {
                     var envVar = content.Substring(4);
-                    return ReadValue("env", envVar);
+                    return ReadValue("Settings", envVar);
                 }
 
                 // 处理 GUID 生成
@@ -996,13 +1000,13 @@ yanbincfg.ini 为 UTF16 LF";
         /// <param name="upath">程序路径</param>
         private void WinExec(string upath)
         {
-            var path = ProcessPath(upath, RunParentDirectory);
-
-            var (a, b) = ProcessString(path,false);
+            var (a, b) = ProcessString(upath,false);
+             a = ProcessPath(a, RunParentDirectory);
+            
 
             if (string.IsNullOrEmpty(b))
             {
-                StartCmdSilently(a);
+                WinExec("explorer.exe " + a, 5);
             }
             else
             {
@@ -1045,7 +1049,7 @@ yanbincfg.ini 为 UTF16 LF";
         /// 启动CMD命令但不显示黑框
         /// </summary>
         /// <param name="command">要执行的CMD命令</param>
-        public void StartCmdSilently(string command)
+        public void StartCmdSilently(string command,bool show = false)
         {
             try
             {
@@ -1053,11 +1057,10 @@ yanbincfg.ini 为 UTF16 LF";
                 {
                     FileName = "cmd.exe",
                     Arguments = $"/c {ProcessPlaceholders(command)}",
-                    UseShellExecute = false,
+                    UseShellExecute = show,
                     CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
+                    WindowStyle =show?ProcessWindowStyle.Normal: ProcessWindowStyle.Hidden
                 };
-
                 Process.Start(startInfo);
             }
             catch (Exception ex)
@@ -1067,24 +1070,16 @@ yanbincfg.ini 为 UTF16 LF";
             }
         }
 
-        #endregion
-
-
         /// <summary>
-        /// Required method for Designer support - do not modify
-        /// the contents of this method with the code editor.
+        /// 调用Windows API执行程序
         /// </summary>
-        private void InitializeComponent()
-        {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(ShowForm));
-            this.SuspendLayout();
-            // 
-            // ShowForm
-            // 
-            this.ClientSize = new System.Drawing.Size(284, 261);
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.Name = "ShowForm";
-            this.ResumeLayout(false);
-        }
+        /// <param name="exeName">要执行的程序名和参数</param>
+        /// <param name="operType">操作类型</param>
+        /// <returns>执行结果</returns>
+        [DllImport("kernel32.dll")]
+        public static extern int WinExec(string exeName, int operType);
+
+        #endregion
+        
     }
 }
