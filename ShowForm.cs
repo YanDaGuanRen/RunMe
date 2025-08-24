@@ -80,7 +80,8 @@ namespace RunMe
             Size = new Size(FormWidth, ItemHeight);
             // 设置窗体名称
             Name = "ShowForm";
-            Icon = Properties.Resources.;
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(ShowForm));
+            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             Text = "很牛B的一个程序启动器";
             // 注册窗体加载事件处理程序
             Load += new EventHandler(this.ShowForm_Load);
@@ -1067,6 +1068,7 @@ yanbincfg.ini 为 UTF16 LF";
         }
 
         #endregion
+
 
         /// <summary>
         /// Required method for Designer support - do not modify
