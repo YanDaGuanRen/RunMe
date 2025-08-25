@@ -2,8 +2,9 @@
 
 on:
   push:
-    branches: [ "master" ]
     tags: [ "v*" ]
+    branches: [ "master" ]
+
 jobs:
   build:
     strategy:
@@ -15,6 +16,7 @@ jobs:
 
     env:
       Solution_Name: RunMe.sln
+      Project_Path: RunMe.csproj
 
     steps:
       - name: Checkout
@@ -31,9 +33,14 @@ jobs:
         run: dotnet restore $env:Solution_Name --force
 
       - name: Build project
-        run: dotnet publish $env:Solution_Name -c $env:Configuration -f ${{ matrix.framework }} --output ./publish/${{ matrix.framework }}
+        run: dotnet publish $env:Project_Path -c $env:Configuration -f ${{ matrix.framework }} --output ./publish/${{ matrix.framework }} --self-contained false
         env:
           Configuration: ${{ matrix.configuration }}
+
+      - name: List output files
+        run: |
+          echo "Files in publish directory:"
+          Get-ChildItem -Path ./publish/${{ matrix.framework }} -Recurse
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
