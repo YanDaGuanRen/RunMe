@@ -12,12 +12,12 @@ jobs:
     strategy:
       matrix:
         configuration: [Release]  # 只构建 Release 版本用于发布
+        framework: [net8.0-windows, net9.0-windows]  # 多目标框架
 
     runs-on: windows-latest
 
     env:
       Solution_Name: RunMe.sln  # 替换为你的解决方案名称（通常是项目名.sln）
-      Output_Path: ./bin/Release  # 编译输出路径（根据实际项目调整）
 
     steps:
       - name: Checkout
@@ -25,14 +25,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0
+            9.0
 
-      - name: Restore NuGet packages
-        run: nuget restore $env:Solution_Name
+      - name: Restore dependencies
+        run: dotnet restore $env:Solution_Name
 
       - name: Build project
-        run: msbuild $env:Solution_Name /p:Configuration=$env:Configuration /p:Platform="AnyCPU" /p:TargetFrameworkVersion=v4.7.2
+        run: dotnet build $env:Solution_Name --no-restore --configuration $env:Configuration -f ${{ matrix.framework }}
         env:
           Configuration: ${{ matrix.configuration }}
 
@@ -40,8 +44,8 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: RunMe-Build
-          path: ${{ env.Output_Path }}/*.exe
+          name: RunMe-Build-${{ matrix.framework }}
+          path: ${{ github.workspace }}/bin/${{ matrix.configuration }}/${{ matrix.framework }}/
 
       # 仅在推送标签时创建 Release
       - name: Create Release
@@ -63,6 +67,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.Output_Path }}/RunMe.exe  # 确保路径与实际编译输出一致
-          asset_name: RunMe.exe
+          asset_path: ${{ github.workspace }}/bin/${{ matrix.configuration }}/${{ matrix.framework }}/RunMe.exe
+          asset_name: RunMe-${{ matrix.framework }}.exe
           asset_content_type: application/exe
