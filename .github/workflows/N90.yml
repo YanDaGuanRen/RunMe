@@ -4,15 +4,12 @@ on:
   push:
     branches: [ "master" ]
     tags: [ "v*" ]
-  pull_request:
-    branches: [ "master" ]
-
 jobs:
   build:
     strategy:
       matrix:
         configuration: [Release]
-        framework: [net8.0-windows, net9.0-windows]
+        framework: [net9.0-windows]
 
     runs-on: windows-latest
 
@@ -28,8 +25,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |            8.0.x
-            9.0.x
+          dotnet-version: 9.0.x
 
       - name: Restore dependencies
         run: dotnet restore $env:Solution_Name --force
