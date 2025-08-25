@@ -57,11 +57,7 @@ public class ShowForm : Form
     /// <summary>
     /// 列表框控件的私有字段
     /// </summary>
-    private ListBox listBox1;
-
-    private bool iscomd;
-
-    private bool isprocess;
+    private ListBox _listBox1;
 
     #endregion
 
@@ -81,7 +77,7 @@ public class ShowForm : Form
         Name = "ShowForm";
         var resources = new System.ComponentModel.ComponentResourceManager(typeof(ShowForm));
         Icon = (Icon)resources.GetObject("$this.Icon");
-        Text = "很牛B的一个程序启动器";
+        Text = @"很牛B的一个程序启动器";
         // 注册窗体加载事件处理程序
         Load += ShowForm_Load;
         // 恢复窗体布局逻辑
@@ -95,16 +91,15 @@ public class ShowForm : Form
         // 获取当前目录的上两级目录路径
         YanBinCfgPath = Path.Combine(RunExePath, "YanBinCfg.ini");
     }
-        
+
     private void NoArgs(string rname = "")
     {
-        string runtxt;
         if (string.IsNullOrEmpty(rname))
         {
             rname = RunExeName;
         }
 
-        runtxt = Path.Combine(RunExePath, rname + "run.txt");
+        var runtxt = Path.Combine(RunExePath, rname + "run.txt");
 
         if (File.Exists(runtxt))
         {
@@ -127,7 +122,7 @@ public class ShowForm : Form
             }
         }
     }
-        
+
     private void ReplaceAll()
     {
         var filelist = Directory.GetFiles(RunExePath, "*.exe", SearchOption.TopDirectoryOnly);
@@ -139,6 +134,7 @@ public class ShowForm : Form
             File.Copy(me, se);
         }
     }
+
     private void ReplaceAllX()
     {
         var oldlist = Directory.GetFiles(RunExePath, "*.exe", SearchOption.TopDirectoryOnly);
@@ -146,11 +142,13 @@ public class ShowForm : Form
         {
             // string programName = Path.GetFileNameWithoutExtension(se);
             var fileInfo = new FileInfo(se);
-            if (!fileInfo.Name.Replace(fileInfo.Extension, "").Equals(RunExeName, StringComparison.CurrentCultureIgnoreCase))
+            if (!fileInfo.Name.Replace(fileInfo.Extension, "")
+                    .Equals(RunExeName, StringComparison.CurrentCultureIgnoreCase))
             {
                 fileInfo.Delete();
             }
         }
+
         var me = Path.Combine(RunExePath, RunExeName + ".exe");
         foreach (var s1 in Config.Where(s1 => !s1.Key.Equals("Settings", StringComparison.CurrentCultureIgnoreCase)))
         {
@@ -165,7 +163,7 @@ public class ShowForm : Form
             }
         }
     }
-        
+
     /// <summary>
     /// 运行文件内容的方法
     /// </summary>
@@ -185,16 +183,17 @@ public class ShowForm : Form
             }
         }
     }
+
     private void RunRunme(params string[] args)
     {
         if (args.Length < 1) return;
         if (string.IsNullOrEmpty(args[1])) return;
         var arg = Regex.Replace(args[1], "runme ", "", RegexOptions.IgnoreCase);
-        var list = arg.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+        var list = arg.Split([','], StringSplitOptions.RemoveEmptyEntries);
         foreach (var se in list)
         {
-            var list2 = se.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
-            var fileNameWithoutExtension = "";
+            var list2 = se.Split(['|'], StringSplitOptions.RemoveEmptyEntries);
+            string fileNameWithoutExtension;
             var path = "";
 
             if (list2.Length > 1)
@@ -241,12 +240,12 @@ public class ShowForm : Form
         else
         {
             // 确保ListView在窗体加载时能获取焦点
-            listBox1.Focus();
+            _listBox1.Focus();
 
             // 默认选中第一项
-            if (listBox1.Items.Count > 0)
+            if (_listBox1.Items.Count > 0)
             {
-                listBox1.SelectedIndex = 0;
+                _listBox1.SelectedIndex = 0;
             }
         }
     }
@@ -254,7 +253,7 @@ public class ShowForm : Form
     private void listBox1_KeyDown(object sender, KeyEventArgs e)
     {
         // 检测是否按下了回车键，并且有选中项
-        if (e.KeyCode != Keys.Enter || listBox1.SelectedIndex == -1) return;
+        if (e.KeyCode != Keys.Enter || _listBox1.SelectedIndex == -1) return;
         // 触发双击事件处理逻辑
         ListBox1_DoubleClick(sender, e);
         e.SuppressKeyPress = true; // 防止系统发出提示音
@@ -267,17 +266,17 @@ public class ShowForm : Form
     /// <param name="e">事件参数</param>
     private void ListBox1_DoubleClick(object sender, EventArgs e)
     {
-
-        if (listBox1.SelectedItem != null && RunDict.TryGetValue(listBox1.SelectedItem.ToString() ?? "",out var dic))
+        if (_listBox1.SelectedItem != null && RunDict.TryGetValue(_listBox1.SelectedItem.ToString() ?? "", out var dic))
         {
             WinExec(dic);
         }
+
         // 关闭窗体
         Close();
     }
 
     #endregion
-        
+
     /// <summary>
     /// 构造函数，根据传入的参数初始化窗体
     /// </summary>
@@ -296,34 +295,34 @@ public class ShowForm : Form
 
         var proseccname = ReadValue("ExecProcess", RunExeName);
 
-        iscomd = !string.IsNullOrEmpty(runname);
-        isprocess = !string.IsNullOrEmpty(proseccname);
+        var iscomd1 = !string.IsNullOrEmpty(runname);
+        var isprocess1 = !string.IsNullOrEmpty(proseccname);
 
-        if (iscomd || isprocess)
+        if (iscomd1 || isprocess1)
         {
             runname = string.IsNullOrEmpty(runname) ? proseccname : runname;
             var requiredParams = GetFormatParameterCount(runname);
-            var runarg = "";
+            string runArg;
 
             if (requiredParams > 0)
             {
                 runname = ProcessPlaceholders(runname);
                 var templist = args.Concat(Enumerable.Repeat(" ", requiredParams)).Take(requiredParams);
-                    
-                runarg = string.Format(runname, templist.ToArray());
+
+                runArg = string.Format(runname, templist.ToArray<object>());
             }
             else
             {
-                runarg = runname + " " + string.Join(" ", args);
+                runArg = runname + " " + string.Join(" ", args);
             }
 
-            if (iscomd)
+            if (iscomd1)
             {
-                StartCmdSilently(runarg);
+                StartCmdSilently(runArg);
             }
             else
             {
-                var (beforeSpace, afterProcessing) = ProcessString(runarg);
+                var (beforeSpace, afterProcessing) = ProcessString(runArg);
                 StartProcess(beforeSpace, afterProcessing);
             }
 
@@ -334,23 +333,28 @@ public class ShowForm : Form
         if (args.Length == 0)
         {
             NoArgs();
-        } else if (args[0].Equals("runmeth", StringComparison.CurrentCultureIgnoreCase))
+        }
+        else if (args[0].Equals("runmeth", StringComparison.CurrentCultureIgnoreCase))
         {
             ReplaceAll();
-        } else if (args[0].Equals("runmefth", StringComparison.CurrentCultureIgnoreCase))
+        }
+        else if (args[0].Equals("runmefth", StringComparison.CurrentCultureIgnoreCase))
         {
             ReplaceAllX();
-        }else if (args[0].Equals("runme", StringComparison.CurrentCultureIgnoreCase))
+        }
+        else if (args[0].Equals("runme", StringComparison.CurrentCultureIgnoreCase))
         {
             RunRunme(args);
-        }else if (args[0].Equals("list", StringComparison.CurrentCultureIgnoreCase))
+        }
+        else if (args[0].Equals("list", StringComparison.CurrentCultureIgnoreCase))
         {
             // 如果参数少于3个
             if (args.Length < 3) return;
 
             GetFilesList(args[2], "." + args[1]);
             ShowListBox();
-        }else if (args[0].Equals("help", StringComparison.CurrentCultureIgnoreCase))
+        }
+        else if (args[0].Equals("help", StringComparison.CurrentCultureIgnoreCase))
         {
             ShowMessage();
         }
@@ -378,7 +382,6 @@ public class ShowForm : Form
                     { "ExcludeExeName", "RunMe|MeRun" },
                     { "变量名1", "这就就是{env.变量名1}的值" },
                     { "变量名2", "这就就是{env.变量名2}的值" },
-
                 }
             },
             {
@@ -397,7 +400,7 @@ public class ShowForm : Form
                 {
                     {
                         "Nug2",
-                        "dotnet nuget push {0} --api-key {1} --source https://api.nuget.org/v3/index.json # 这样的占位符只能在ExecProcess ExecCmd" 
+                        "dotnet nuget push {0} --api-key {1} --source https://api.nuget.org/v3/index.json # 这样的占位符只能在ExecProcess ExecCmd"
                     }
                 }
             },
@@ -419,6 +422,7 @@ public class ShowForm : Form
         // 创建INI文件
         CreateIniFile(YanBinCfgPath, iniData);
     }
+
     /// <summary>
     /// 创建一个UTF-16编码、LF换行符的INI文件
     /// </summary>
@@ -430,7 +434,7 @@ public class ShowForm : Form
 
         content.AppendLine(@"#以下全局可用");
         content.AppendLine(@"#{time.格式} - 使用当前时间并按照指定格式格式化");
-        content.AppendLine(@"#{env.变量名} - 获取指定的环境变量值 在Settings项中设置" );
+        content.AppendLine(@"#{env.变量名} - 获取指定的环境变量值 在Settings项中设置");
         content.AppendLine(@"#{guid.id} - 生成一个新的 GUID");
         content.AppendLine(@"#{random.最小值-最大值} - 生成指定范围内的随机数");
         content.AppendLine(); // 添加空行分隔段落
@@ -448,6 +452,7 @@ public class ShowForm : Form
                 content.AppendLine(@"#AppData = 用户目录");
                 content.AppendLine(); // 添加空行分隔段落
             }
+
             content.AppendLine($"[{section.Key}]");
 
 
@@ -484,8 +489,7 @@ public class ShowForm : Form
 
                 using (var reader = new StreamReader(YanBinCfgPath, Encoding.UTF8))
                 {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
+                    while (reader.ReadLine() is { } line)
                     {
                         line = line.Trim();
                         if (string.IsNullOrEmpty(line) || line.StartsWith(";") || line.StartsWith("#"))
@@ -497,7 +501,7 @@ public class ShowForm : Form
                             currentSection = line.Substring(1, line.Length - 2);
 
                             // 创建新的节字典
-                            if (!Config.ContainsKey(currentSection))
+                            if (!Config.TryGetValue(currentSection, out var value))
                             {
                                 currentSectionDict =
                                     new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -505,13 +509,13 @@ public class ShowForm : Form
                             }
                             else
                             {
-                                currentSectionDict = Config[currentSection];
+                                currentSectionDict = value;
                             }
                         }
                         // 处理键值对
                         else if (line.Contains('=') && !string.IsNullOrEmpty(currentSection))
                         {
-                            var parts = line.Split(new[] { '=' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                            var parts = line.Split(['='], 2, StringSplitOptions.RemoveEmptyEntries);
                             string key = parts[0].Trim();
                             string value = parts[1].Trim();
 
@@ -529,20 +533,21 @@ public class ShowForm : Form
                 }
             }
         }
-        catch (Exception ex)
+        catch
         {
+            Close();
         }
     }
 
     /// <summary>
     /// 从INI配置文件中读取指定节和键的值
     /// </summary>
-    /// <param name="Section">节名称</param>
-    /// <param name="Key">键名称</param>
+    /// <param name="section">节名称</param>
+    /// <param name="key">键名称</param>
     /// <returns>读取到的值</returns>
-    private string ReadValue(string Section, string Key)
+    private string ReadValue(string section, string key)
     {
-        return !Config.TryGetValue(Section, out var ddic) ? "" : ddic.GetValueOrDefault(Key, "");
+        return !Config.TryGetValue(section, out var ddic) ? "" : ddic.GetValueOrDefault(key, "");
     }
 
     #endregion
@@ -627,12 +632,12 @@ public class ShowForm : Form
         }
 
 
-            var t = ReadValue("Config", upath);
-            if (!string.IsNullOrEmpty(t))
-            {
-                upath = t;
-            }
-        
+        var t = ReadValue("Config", upath);
+        if (!string.IsNullOrEmpty(t))
+        {
+            upath = t;
+        }
+
 
         if (upath.Length > 3 && upath.Substring(1, 2) == ":\\")
         {
@@ -657,7 +662,8 @@ public class ShowForm : Form
             upath = upath.Substring(7);
             // 获取应用程序数据目录的父目录
             parentDirectory = Directory
-                .GetParent(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)).FullName;
+                .GetParent(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData))
+                ?.FullName;
         }
         // 如果路径以"..\"开头
         else if (upath.StartsWith("..\\")) // 处理相对路径
@@ -666,7 +672,7 @@ public class ShowForm : Form
             while (upath.StartsWith("..\\"))
             {
                 // 获取父目录的父目录
-                parentDirectory = Directory.GetParent(parentDirectory).FullName;
+                if (parentDirectory != null) parentDirectory = Directory.GetParent(parentDirectory)?.FullName;
                 // 移除路径中的"..\"
                 upath = upath.Substring(3);
             }
@@ -678,7 +684,7 @@ public class ShowForm : Form
             while (upath.StartsWith("../"))
             {
                 // 获取父目录的父目录
-                parentDirectory = Directory.GetParent(parentDirectory).FullName;
+                if (parentDirectory != null) parentDirectory = Directory.GetParent(parentDirectory)?.FullName;
                 // 移除路径中的"../"
                 upath = upath.Substring(3);
             }
@@ -732,7 +738,7 @@ public class ShowForm : Form
             }
 
             // 组合父目录和路径
-            upath = Path.Combine(parentDirectory, upath);
+            if (parentDirectory != null) upath = Path.Combine(parentDirectory, upath);
         }
 
         // 返回处理后的路径
@@ -743,8 +749,9 @@ public class ShowForm : Form
     /// 分离出程序与参数
     /// </summary>
     /// <param name="input"></param>
+    /// <param name="findChar"></param>
     /// <returns></returns>
-    private (string beforeSpace, string afterProcessing) ProcessString(string input,bool findChar=true)
+    private (string beforeSpace, string afterProcessing) ProcessString(string input, bool findChar = true)
     {
         // 处理空输入
         if (string.IsNullOrEmpty(input))
@@ -789,7 +796,7 @@ public class ShowForm : Form
                 if (exeEndIndex >= 0)
                 {
                     // 找到".exe "，分离路径和参数
-                    string exePath = input.Substring(0, exeEndIndex + 4);  // +4包括.exe
+                    string exePath = input.Substring(0, exeEndIndex + 4); // +4包括.exe
                     string arguments = input.Substring(exeEndIndex + 5).TrimStart(); // +5跳过".exe "
                     return (exePath, arguments);
                 }
@@ -799,6 +806,7 @@ public class ShowForm : Form
             return (input, string.Empty);
         }
     }
+
     /// <summary>
     /// 取占位符数
     /// </summary>
@@ -826,7 +834,7 @@ public class ShowForm : Form
 
         return maxIndex + 1;
     }
-        
+
     /// <summary>
     /// 取窗口中列表高度
     /// </summary>
@@ -835,8 +843,10 @@ public class ShowForm : Form
     {
         if (RunDict.Count > 0)
         {
-            return ItemHeight + ItemHeight * RunDict.Count;
+            var height = ItemHeight + ItemHeight * RunDict.Count;
+            return height > MaxFormHeight ? MaxFormHeight : height;
         }
+
         return ItemHeight;
     }
 
@@ -844,14 +854,14 @@ public class ShowForm : Form
     /// 取指定目录指定后缀列表
     /// </summary>
     /// <param name="path"></param>
-    /// <param name="Suffix"></param>
-    private void GetFilesList(string path, string Suffix)
+    /// <param name="suffix"></param>
+    private void GetFilesList(string path, string suffix)
     {
         var list = ReadValue("Settings", "ExcludeExeName")
             ?.Split(['|'], StringSplitOptions.RemoveEmptyEntries);
         if (list == null || list.Length < 1 || string.IsNullOrEmpty(list[0]))
         {
-            list = new[] { "RunMe", "MeRun" };
+            list = ["RunMe", "MeRun"];
         }
 
         // 遍历所有文件
@@ -861,13 +871,13 @@ public class ShowForm : Form
             var info = new FileInfo(file);
             // 如果文件扩展名匹配且文件名不等于当前主模块名
             var name = Regex.Replace(info.Name, info.Extension, "", RegexOptions.IgnoreCase);
-            if (info.Extension.Equals(Suffix, StringComparison.CurrentCultureIgnoreCase) && !list.Contains(name))
+            if (info.Extension.Equals(suffix, StringComparison.CurrentCultureIgnoreCase) && !list.Contains(name))
             {
-                RunDict[info.Name.Replace(Suffix, "")] = info.FullName;
+                RunDict[info.Name.Replace(suffix, "")] = info.FullName;
             }
         }
     }
-        
+
     /// <summary>
     /// 显示窗口程序列表
     /// </summary>
@@ -889,45 +899,45 @@ public class ShowForm : Form
         }
 
         // 创建一个新的列表框控件
-        this.listBox1 = new ListBox();
+        this._listBox1 = new ListBox();
         try
         {
             // 暂停窗体布局逻辑
-            base.SuspendLayout();
+            SuspendLayout();
             // 设置列表框停靠方式为填充
-            this.listBox1.Dock = DockStyle.Fill;
+            this._listBox1.Dock = DockStyle.Fill;
             // 设置列表框字体
-            this.listBox1.Font = new Font("微软雅黑", 26.25f);
+            this._listBox1.Font = new Font("微软雅黑", 26.25f);
             // 设置列表项高度
-            this.listBox1.ItemHeight = ItemHeight;
+            this._listBox1.ItemHeight = ItemHeight;
             // 设置列表框允许格式化
-            this.listBox1.FormattingEnabled = true;
+            this._listBox1.FormattingEnabled = true;
             // 设置列表框位置
-            this.listBox1.Location = new Point(0, 0);
+            this._listBox1.Location = new Point(0, 0);
             // 设置列表框名称
-            this.listBox1.Name = "listBox2";
+            this._listBox1.Name = "listBox2";
             // 设置列表框TabIndex属性
-            this.listBox1.TabIndex = 0;
+            this._listBox1.TabIndex = 0;
             // 注册列表框双击事件处理程序
-            this.listBox1.DoubleClick += ListBox1_DoubleClick;
+            this._listBox1.DoubleClick += ListBox1_DoubleClick;
 
-            this.listBox1.KeyDown += listBox1_KeyDown;
+            this._listBox1.KeyDown += listBox1_KeyDown;
             // 将文件名列表添加到列表框中
-            this.listBox1.Items.AddRange(RunDict.Keys.ToArray());
+            this._listBox1.Items.AddRange(RunDict.Keys.ToArray<object>());
             // 设置窗体大小
-            base.Size = new Size(FormWidth, height);
+            Size = new Size(FormWidth, height);
             // 将列表框添加到窗体控件集合中
-            base.Controls.Add(this.listBox1);
+            Controls.Add(this._listBox1);
             // 设置窗体起始位置为屏幕中心
-            base.StartPosition = FormStartPosition.CenterScreen;
+            StartPosition = FormStartPosition.CenterScreen;
             // 恢复窗体布局逻辑
-            base.ResumeLayout(false);
+            ResumeLayout(false);
         }
         // 捕获异常
         catch (Exception ex)
         {
             IsClose = true;
-            MessageBox.Show($"处理文件列表时发生错误: {ex.Message}");
+            MessageBox.Show($@"处理文件列表时发生错误: {ex.Message}");
         }
     }
 
@@ -938,38 +948,39 @@ public class ShowForm : Form
     {
         // 定义帮助文本
         var str = """
-                     程序执行顺序: 
-                     有参数:
-                     runme.exe list exe c:\ (列表形式显示C盘下所有EXE文件)
-                     runme.exe help (显示程序的帮助程序)
-                     runme.exe XX (运行yanbincfg.ini配置文件中的XX项目)
-                     无参数:
-                     配置文件:配置读取顺序
-                     程序名.run → 
-                     如果程序名为A.exe 
-                     如果程序目录有a.run 会执行a.run文件中每一行的程序间隔1秒
-                     如果程序目录没有a.run 会执行yanbincfg.ini中Config中a键的程序
+                  程序执行顺序: 
+                  有参数:
+                  runme.exe list exe c:\ (列表形式显示C盘下所有EXE文件)
+                  runme.exe help (显示程序的帮助程序)
+                  runme.exe XX (运行yanbincfg.ini配置文件中的XX项目)
+                  无参数:
+                  配置文件:配置读取顺序
+                  程序名.run → 
+                  如果程序名为A.exe 
+                  如果程序目录有a.run 会执行a.run文件中每一行的程序间隔1秒
+                  如果程序目录没有a.run 会执行yanbincfg.ini中Config中a键的程序
 
 
-                     a.run 为Encoding.UTF8格式
-                     yanbincfg.ini 为 UTF16 LF
-                     """;
+                  a.run 为Encoding.UTF8格式
+                  yanbincfg.ini 为 UTF16 LF
+                  """;
         // 显示帮助信息消息框
-        MessageBox.Show("看配置文件", "使用帮助");
+        MessageBox.Show(@"看配置文件", @"使用帮助");
     }
 
     #endregion
-        
+
     #region DllImport
+
     /// <summary>
     /// 运行指定路径的程序
     /// </summary>
     /// <param name="upath">程序路径</param>
     private void WinExec(string upath)
     {
-        var (a, b) = ProcessString(upath,false);
+        var (a, b) = ProcessString(upath, false);
         a = ProcessPath(a, RunParentDirectory);
-            
+
 
         if (string.IsNullOrEmpty(b))
         {
@@ -977,7 +988,7 @@ public class ShowForm : Form
         }
         else
         {
-            StartProcess(a,b);
+            StartProcess(a, b);
         }
     }
 
@@ -1008,7 +1019,7 @@ public class ShowForm : Form
         catch (Exception ex)
         {
             // 忽略所有异常，确保方法不会因为启动进程失败而中断
-            Console.WriteLine($"启动进程时发生错误: {ex.Message}");
+            Console.WriteLine($@"启动进程时发生错误: {ex.Message}");
         }
     }
 
@@ -1017,7 +1028,7 @@ public class ShowForm : Form
     /// </summary>
     /// <param name="command">要执行的CMD命令</param>
     /// <param name="show"></param>
-    private void StartCmdSilently(string command,bool show = false)
+    private void StartCmdSilently(string command, bool show = false)
     {
         try
         {
@@ -1027,14 +1038,14 @@ public class ShowForm : Form
                 Arguments = $"/c {ProcessPlaceholders(command)}",
                 UseShellExecute = show,
                 CreateNoWindow = true,
-                WindowStyle =show?ProcessWindowStyle.Normal: ProcessWindowStyle.Hidden
+                WindowStyle = show ? ProcessWindowStyle.Normal : ProcessWindowStyle.Hidden
             };
             Process.Start(startInfo);
         }
         catch (Exception ex)
         {
             // 忽略所有异常，确保方法不会因为启动进程失败而中断
-            Console.WriteLine($"启动CMD命令时发生错误: {ex.Message}");
+            Console.WriteLine($@"启动CMD命令时发生错误: {ex.Message}");
         }
     }
 
@@ -1048,5 +1059,4 @@ public class ShowForm : Form
     private static extern int WinExec(string exeName, int operType);
 
     #endregion
-        
 }
