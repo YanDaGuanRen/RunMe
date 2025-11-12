@@ -74,8 +74,6 @@ namespace RunMe
             Size = new Size(FormWidth, ItemHeight);
             // 设置窗体名称
             Name = "ShowForm";
-            var resources = new System.ComponentModel.ComponentResourceManager(typeof(ShowForm));
-            Icon = (Icon)resources.GetObject("$this.Icon");
             Text = $@"很牛B的一个程序启动器";
             // 注册窗体加载事件处理程序
             Load += ShowForm_Load;
@@ -251,15 +249,49 @@ namespace RunMe
                 }
             }
         }
+        
+        private void ListBox1_MouseWheel(object sender, MouseEventArgs e)
+        {
+            if (_listBox1.Items.Count <= 0) return;
+            
+            var currentIndex = _listBox1.SelectedIndex;
+            if (e.Delta > 0)
+            {
+                // 向上滚动
+                if (currentIndex <= 0)
+                {
+                    _listBox1.SelectedIndex = _listBox1.Items.Count - 1;
+                }
+                else
+                {
+                    _listBox1.SelectedIndex = currentIndex - 1;
+                }
+            }
+            else if (e.Delta < 0)
+            {
+                if (currentIndex >= _listBox1.Items.Count - 1)
+                {
+                    _listBox1.SelectedIndex = 0;
+                }
+                else
+                {
+                    _listBox1.SelectedIndex = currentIndex + 1;
+                }
+            }
+        }
 
         private void listBox1_KeyDown(object sender, KeyEventArgs e)
         {
-            // 检测是否按下了回车键，并且有选中项
             if (e.KeyCode == Keys.Enter && _listBox1.SelectedIndex != -1)
             {
-                // 触发双击事件处理逻辑
-                ListBox1_DoubleClick(sender, e);
                 e.SuppressKeyPress = true; // 防止系统发出提示音
+                WinExec(RunDict[_listBox1.SelectedItem.ToString()],(e.Modifiers & Keys.Shift) == Keys.Shift);
+                Close();
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                e.SuppressKeyPress = true; // 防止系统发出提示音
+                Close();
             }
         }
 
@@ -270,9 +302,7 @@ namespace RunMe
         /// <param name="e">事件参数</param>
         private void ListBox1_DoubleClick(object sender, EventArgs e)
         {
-            // 如果路径不为空
             WinExec(RunDict[_listBox1.SelectedItem.ToString()]);
-            // 关闭窗体
             Close();
         }
 
@@ -292,10 +322,8 @@ namespace RunMe
                 string.IsNullOrEmpty(RunExeName) ||
                 string.IsNullOrEmpty(RunExePath)
                ) return;
-            var runname = ReadValue("ExecCmd", RunExeName);
-
-            var proseccname = ReadValue("ExecProcess", RunExeName);
-
+            var runname = ReadValue("ExecProcess", RunExeName);
+            var proseccname = ReadValue("ExecAdminProcess", RunExeName);
             var iscomd1 = !string.IsNullOrEmpty(runname);
             var isprocess1 = !string.IsNullOrEmpty(proseccname);
 
@@ -309,24 +337,14 @@ namespace RunMe
                 {
                     runname = ProcessPlaceholders(runname);
                     var templist = args.Concat(Enumerable.Repeat(" ", requiredParams)).Take(requiredParams);
-
                     runarg = string.Format(runname, templist.ToArray());
                 }
                 else
                 {
                     runarg = runname + " " + string.Join(" ", args);
                 }
-
-                if (iscomd1)
-                {
-                    StartCmdSilently(runarg);
-                }
-                else
-                {
-                    var (beforeSpace, afterProcessing) = ProcessString(runarg);
-                    StartProcess(beforeSpace, afterProcessing);
-                }
-
+                var (beforeSpace, afterProcessing) = ProcessString(runarg);
+                StartProcess(beforeSpace, afterProcessing,iscomd1);
                 return;
             }
 
@@ -387,7 +405,7 @@ namespace RunMe
                         }
                     },
                     {
-                        "ExecCmd",
+                        "ExecProcess",
                         new Dictionary<string, string>
                         {
                             {
@@ -397,7 +415,7 @@ namespace RunMe
                         }
                     },
                     {
-                        "ExecProcess",
+                        "ExecAdminProcess",
                         new Dictionary<string, string>
                         {
                             {
@@ -931,7 +949,7 @@ namespace RunMe
                 _listBox1.TabIndex = 0;
                 // 注册列表框双击事件处理程序
                 _listBox1.DoubleClick += ListBox1_DoubleClick;
-
+                _listBox1.MouseWheel += ListBox1_MouseWheel;
                 _listBox1.KeyDown += listBox1_KeyDown;
                 // 将文件名列表添加到列表框中
                 _listBox1.Items.AddRange(RunDict.Keys.ToArray());
@@ -969,20 +987,19 @@ namespace RunMe
         /// 运行指定路径的程序
         /// </summary>
         /// <param name="upath">程序路径</param>
-        private void WinExec(string upath)
+        private void WinExec(string upath,bool runas= false)
         {
             var (a, b) = ProcessString(upath, false);
             a = ProcessPath(a, RunParentDirectory);
 
-
-            if (string.IsNullOrEmpty(b))
-            {
-                WinExec("explorer.exe " + a, 5);
-            }
-            else
-            {
-                StartProcess(a, b);
-            }
+            // if (string.IsNullOrEmpty(b))
+            // {
+            //     WinExec("explorer.exe " + a, 5);
+            // }
+            // else
+            // {
+                    StartProcess(a, b,runas);
+            // }
         }
 
 
@@ -991,22 +1008,33 @@ namespace RunMe
         /// </summary>
         /// <param name="fileName">要启动的程序路径</param>
         /// <param name="arguments">程序参数（可选）</param>
-        private void StartProcess(string fileName, string arguments = null)
+        private void StartProcess(string fileName,string arguments = null, bool runas = false)
         {
             try
             {
-                ProcessStartInfo startInfo = new ProcessStartInfo
-                {
-                    FileName = fileName,
-                    UseShellExecute = true,
-                    CreateNoWindow = true
-                };
-
+                ProcessStartInfo startInfo;
                 if (!string.IsNullOrEmpty(arguments))
                 {
+                     startInfo = new ProcessStartInfo
+                    {
+                        FileName = fileName,
+                        UseShellExecute = true,
+                        CreateNoWindow = true
+                    };
+                    if (runas) startInfo.Verb = "runas"; // 请求提升权限
                     startInfo.Arguments = ProcessPlaceholders(arguments);
                 }
-
+                else
+                {
+                    startInfo = new ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        UseShellExecute = true,
+                        CreateNoWindow = true
+                    };
+                    if (runas) startInfo.Verb = "runas"; // 请求提升权限
+                    startInfo.Arguments = ProcessPlaceholders(fileName);
+                }
                 Process.Start(startInfo);
             }
             catch (Exception ex)
@@ -1016,31 +1044,6 @@ namespace RunMe
             }
         }
 
-        /// <summary>
-        /// 启动CMD命令但不显示黑框
-        /// </summary>
-        /// <param name="command">要执行的CMD命令</param>
-        /// <param name="show"></param>
-        private void StartCmdSilently(string command, bool show = false)
-        {
-            try
-            {
-                ProcessStartInfo startInfo = new ProcessStartInfo
-                {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c {ProcessPlaceholders(command)}",
-                    UseShellExecute = show,
-                    CreateNoWindow = true,
-                    WindowStyle = show ? ProcessWindowStyle.Normal : ProcessWindowStyle.Hidden
-                };
-                Process.Start(startInfo);
-            }
-            catch (Exception ex)
-            {
-                // 忽略所有异常，确保方法不会因为启动进程失败而中断
-                Console.WriteLine($@"启动CMD命令时发生错误: {ex.Message}");
-            }
-        }
 
         /// <summary>
         /// 调用Windows API执行程序
