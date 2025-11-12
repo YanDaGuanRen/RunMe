@@ -332,7 +332,6 @@ namespace RunMe
                 runname = string.IsNullOrEmpty(runname) ? proseccname : runname;
                 int requiredParams = GetFormatParameterCount(runname);
                 var runarg = "";
-
                 if (requiredParams > 0)
                 {
                     runname = ProcessPlaceholders(runname);
@@ -343,8 +342,7 @@ namespace RunMe
                 {
                     runarg = runname + " " + string.Join(" ", args);
                 }
-                var (beforeSpace, afterProcessing) = ProcessString(runarg);
-                StartProcess(beforeSpace, afterProcessing,iscomd1);
+                WinExec(runarg, isprocess1);
                 return;
             }
 
@@ -1018,8 +1016,8 @@ namespace RunMe
                 if (!string.IsNullOrEmpty(arguments))
                 {
                     startInfo.FileName = fileName;
-                    if (runas) startInfo.Verb = "runas"; // 请求提升权限
                     startInfo.Arguments = ProcessPlaceholders(arguments);
+                    if (runas) startInfo.Verb = "runas"; // 请求提升权限
                 }
                 else
                 {
