@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -249,11 +249,11 @@ namespace RunMe
                 }
             }
         }
-        
+
         private void ListBox1_MouseWheel(object sender, MouseEventArgs e)
         {
             if (_listBox1.Items.Count <= 0) return;
-            
+
             var currentIndex = _listBox1.SelectedIndex;
             if (e.Delta > 0)
             {
@@ -285,7 +285,7 @@ namespace RunMe
             if (e.KeyCode == Keys.Enter && _listBox1.SelectedIndex != -1)
             {
                 e.SuppressKeyPress = true; // 防止系统发出提示音
-                WinExec(RunDict[_listBox1.SelectedItem.ToString()],(e.Modifiers & Keys.Shift) == Keys.Shift);
+                WinExec(RunDict[_listBox1.SelectedItem.ToString()], (e.Modifiers & Keys.Shift) == Keys.Shift);
                 Close();
             }
             else if (e.KeyCode == Keys.Escape)
@@ -322,27 +322,24 @@ namespace RunMe
                 string.IsNullOrEmpty(RunExeName) ||
                 string.IsNullOrEmpty(RunExePath)
                ) return;
-            var runname = ReadValue("ExecProcess", RunExeName);
-            var proseccname = ReadValue("ExecAdminProcess", RunExeName);
-            var iscomd1 = !string.IsNullOrEmpty(runname);
-            var isprocess1 = !string.IsNullOrEmpty(proseccname);
-
-            if (iscomd1 || isprocess1)
+            var runExecProcess = ReadValue("ExecProcess", RunExeName);
+            var runExecAdminProcess = ReadValue("ExecAdminProcess", RunExeName);
+            if (!string.IsNullOrEmpty(runExecProcess) || !string.IsNullOrEmpty(runExecAdminProcess))
             {
-                runname = string.IsNullOrEmpty(runname) ? proseccname : runname;
-                int requiredParams = GetFormatParameterCount(runname);
+                runExecProcess = string.IsNullOrEmpty(runExecProcess)? runExecAdminProcess: runExecProcess;
+                int requiredParams = GetFormatParameterCount(runExecProcess);
                 var runarg = "";
                 if (requiredParams > 0)
                 {
-                    runname = ProcessPlaceholders(runname);
+                    runExecProcess = ProcessPlaceholders(runExecProcess);
                     var templist = args.Concat(Enumerable.Repeat(" ", requiredParams)).Take(requiredParams);
-                    runarg = string.Format(runname, templist.ToArray());
+                    runarg = string.Format(runExecProcess, templist.ToArray());
                 }
                 else
                 {
-                    runarg = runname + " " + string.Join(" ", args);
+                    runarg = runExecProcess + " " + string.Join(" ", args);
                 }
-                WinExec(runarg, isprocess1);
+                WinExec(runarg, !string.IsNullOrEmpty(runExecAdminProcess));
                 return;
             }
 
@@ -573,8 +570,7 @@ namespace RunMe
                     return sett;
                 }
             }
-
-            return "";
+            return null;
         }
 
         #endregion
@@ -985,7 +981,7 @@ namespace RunMe
         /// 运行指定路径的程序
         /// </summary>
         /// <param name="upath">程序路径</param>
-        private void WinExec(string upath,bool runas= false)
+        private void WinExec(string upath, bool runas = false)
         {
             var (a, b) = ProcessString(upath, false);
             a = ProcessPath(a, RunParentDirectory);
@@ -996,7 +992,7 @@ namespace RunMe
             // }
             // else
             // {
-                    StartProcess(a, b,runas);
+            StartProcess(a, b, runas);
             // }
         }
 
@@ -1006,7 +1002,7 @@ namespace RunMe
         /// </summary>
         /// <param name="fileName">要启动的程序路径</param>
         /// <param name="arguments">程序参数（可选）</param>
-        private void StartProcess(string fileName,string arguments = null, bool runas = false)
+        private void StartProcess(string fileName, string arguments = null, bool runas = false)
         {
             try
             {
