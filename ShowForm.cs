@@ -1012,28 +1012,27 @@ namespace RunMe
         {
             try
             {
-                ProcessStartInfo startInfo;
+                ProcessStartInfo startInfo = new ProcessStartInfo();
+                startInfo.UseShellExecute = true;
+                startInfo.CreateNoWindow = true;
                 if (!string.IsNullOrEmpty(arguments))
                 {
-                     startInfo = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        UseShellExecute = true,
-                        CreateNoWindow = true
-                    };
+                    startInfo.FileName = fileName;
                     if (runas) startInfo.Verb = "runas"; // 请求提升权限
                     startInfo.Arguments = ProcessPlaceholders(arguments);
                 }
                 else
                 {
-                    startInfo = new ProcessStartInfo
+                    if (runas)
                     {
-                        FileName = "explorer.exe",
-                        UseShellExecute = true,
-                        CreateNoWindow = true
-                    };
-                    if (runas) startInfo.Verb = "runas"; // 请求提升权限
-                    startInfo.Arguments = ProcessPlaceholders(fileName);
+                        startInfo.Verb = "runas"; // 请求提升权限
+                        startInfo.FileName = fileName;
+                    }
+                    else
+                    {
+                        startInfo.FileName = "explorer.exe";
+                        startInfo.Arguments = ProcessPlaceholders(fileName);
+                    }
                 }
                 Process.Start(startInfo);
             }
