@@ -112,7 +112,7 @@ namespace RunMe
                 {
                     if (upath.Contains(","))
                     {
-                        RunRunme("", upath);
+                        RunRunme(upath);
                     }
                     else
                     {
@@ -192,21 +192,66 @@ namespace RunMe
                 }
             }
         }
-
-        private void RunRunme(params string[] args)
+        private void CmdExec(string command)
         {
-            if (args.Length < 1) return;
-            if (string.IsNullOrEmpty(args[1])) return;
-            var arg = Regex.Replace(args[1], "runme ", "", RegexOptions.IgnoreCase);
-            var list = arg.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var se in list)
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = "/c " + command,
+                    UseShellExecute = false,
+                    CreateNoWindow = false,
+                    WorkingDirectory = RunExePath
+                };
+
+                Process.Start(startInfo);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("CMD 启动失败：" + ex.Message);
+            }
+        }
+        private void PowerShellExec(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command))
+            {
+                return;
+            }
+
+            // PowerShell 的 -EncodedCommand 要求使用 UTF-16LE 编码
+            var encodedCommand = Convert.ToBase64String(
+                Encoding.Unicode.GetBytes(command)
+            );
+
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoLogo -NoProfile -EncodedCommand {encodedCommand}",
+                    UseShellExecute = false,
+                    CreateNoWindow = false,
+                    WorkingDirectory = RunExePath
+                };
+
+                Process.Start(startInfo);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("PowerShell 启动失败：" + ex.Message);
+            }
+        }
+
+        private void RunRunme(string args)
+        {
+            if (string.IsNullOrEmpty(args)) return;
+            foreach (var se in args.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 var list2 = se.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
                 if (list2.Length > 1)
                 {
-                    var fileNameWithoutExtension = list2[0];
-                    var path = ProcessPath(list2[1], RunParentDirectory);
-                    RunDict[fileNameWithoutExtension] = path;
+                    RunDict[list2[0]] = ProcessPath(list2[1], RunParentDirectory);
                 }
             }
 
@@ -348,19 +393,20 @@ namespace RunMe
             {
                 NoArgs();
             }
-            else if (args[0].ToLower() == "runmeth")
+            else if (args[0]?.StartsWith("runmeth", StringComparison.OrdinalIgnoreCase) == true)
             {
                 ReplaceAll();
             }
-            else if (args[0].ToLower() == "runmefth")
+            else if (args[0]?.StartsWith("runmefth", StringComparison.OrdinalIgnoreCase) == true)
             {
                 ReplaceAllX();
             }
-            else if (args[0].ToLower() == "runme")
+            else if (args[0]?.StartsWith("runme ", StringComparison.OrdinalIgnoreCase) == true)
             {
-                RunRunme(args);
+                if (args.Length < 2) return;
+                RunRunme(string.Join(" ", args.Skip(1)));
             }
-            else if (args[0] == "list")
+            else if (args[0]?.StartsWith("list ", StringComparison.OrdinalIgnoreCase) == true)
             {
                 // 如果参数少于3个
                 if (args.Length < 3) return;
@@ -368,7 +414,7 @@ namespace RunMe
                 GetFilesList(args[2], "." + args[1]);
                 ShowListBox();
             }
-            else if (args[0] == "help")
+            else if (args[0].Equals("help", StringComparison.OrdinalIgnoreCase))
             {
                 ShowMessage();
             }
@@ -466,6 +512,7 @@ namespace RunMe
                     content.AppendLine(@"#pf = 从C到G盘的Program Files目录");
                     content.AppendLine(@"#pf86 = 从C到G盘的Program Files (x86)目录)");
                     content.AppendLine(@"#AppData = 用户目录");
+                    content.AppendLine(@"#Config 可以使用CMD 或PS PowerShell 指定运行方式 可以不加就是默认启动");
                     content.AppendLine(); // 添加空行分隔段落
                 }
 
@@ -983,17 +1030,28 @@ namespace RunMe
         /// <param name="upath">程序路径</param>
         private void WinExec(string upath, bool runas = false)
         {
-            var (a, b) = ProcessString(upath, false);
-            a = ProcessPath(a, RunParentDirectory);
+            var test = upath.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries); 
+            if (test[0]?.Equals("cmd", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                if (test.Length < 2) return;
+                CmdExec(string.Join(" ", test.Skip(1)));
+                return;
+            }
+            
+            if (test[0]?.Equals("ps", StringComparison.OrdinalIgnoreCase) == true ||
+                     test[0]?.Equals("powershell", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                if (test.Length < 2)
+                {
+                    return;
+                }
 
-            // if (string.IsNullOrEmpty(b))
-            // {
-            //     WinExec("explorer.exe " + a, 5);
-            // }
-            // else
-            // {
-            StartProcess(a, b, runas);
-            // }
+                PowerShellExec(string.Join(" ", test.Skip(1)));
+                return;
+            }
+            var (a, b) = ProcessString(upath, false);
+            StartProcess(ProcessPath(a, RunParentDirectory), b, runas);
+
         }
 
 
