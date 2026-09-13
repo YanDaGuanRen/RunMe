@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -58,6 +57,16 @@ namespace RunMe
         /// </summary>
         private ListBox _listBox1;
 
+        /// <summary>
+        /// 占位符 {random.min-max} 使用的共享随机数生成器
+        /// </summary>
+        private static readonly Random RandomPicker = new Random();
+
+        /// <summary>
+        /// 命令行参数：用于填充配置模板中的 {0}{1}… 占位符（无此场景时为 null）
+        /// </summary>
+        private string[] _extraArgs;
+
         #endregion
 
         #region 窗体方法
@@ -83,8 +92,8 @@ namespace RunMe
             RunDict = new Dictionary<string, string>();
             // 初始化exepath为当前应用程序域的基目录
             RunExePath = AppDomain.CurrentDomain.BaseDirectory;
-            // 获取当前可执行文件名并移除.exe扩展名
-            RunExeName = Path.GetFileName(Application.ExecutablePath).Replace(".exe", "");
+            // 获取当前可执行文件名并移除扩展名
+            RunExeName = Path.GetFileNameWithoutExtension(Application.ExecutablePath);
             // 获取当前目录的上两级目录路径
             YanBinCfgPath = Path.Combine(RunExePath, "YanBinCfg.ini");
         }
@@ -110,9 +119,10 @@ namespace RunMe
 
                 if (!string.IsNullOrEmpty(upath))
                 {
-                    if (upath.Contains(","))
+                    // 列表标记：值以 "runme " 开头即为列表（显示名|目标,…），否则整条按单条命令执行
+                    if (upath.StartsWith("runme ", StringComparison.OrdinalIgnoreCase))
                     {
-                        RunRunme(upath);
+                        RunRunme(upath.Substring(6).TrimStart());
                     }
                     else
                     {
@@ -128,10 +138,18 @@ namespace RunMe
             var me = Path.Combine(RunExePath, RunExeName + ".exe");
             foreach (var se in filelist)
             {
-                if (se.ToLower() != me.ToLower())
+                if (!se.Equals(me, StringComparison.OrdinalIgnoreCase))
                 {
-                    File.Delete(se);
-                    File.Copy(me, se);
+                    try
+                    {
+                        File.Delete(se);
+                        File.Copy(me, se);
+                    }
+                    catch (Exception ex)
+                    {
+                        // 文件被占用等情况：跳过该文件，不中断
+                        Debug.WriteLine("替换失败: " + se + " - " + ex.Message);
+                    }
                 }
             }
         }
@@ -141,19 +159,25 @@ namespace RunMe
             var oldlist = Directory.GetFiles(RunExePath, "*.exe", SearchOption.TopDirectoryOnly);
             foreach (var se in oldlist)
             {
-                // string programName = Path.GetFileNameWithoutExtension(se);
                 var fileInfo = new FileInfo(se);
-                if (fileInfo.Name.Replace(fileInfo.Extension, "").ToLower() != RunExeName.ToLower())
+                if (!Path.GetFileNameWithoutExtension(fileInfo.Name).Equals(RunExeName, StringComparison.OrdinalIgnoreCase))
                 {
-                    fileInfo.Delete();
+                    try
+                    {
+                        fileInfo.Delete();
+                    }
+                    catch (Exception ex)
+                    {
+                        // 文件被占用等情况：跳过该文件，不中断
+                        Debug.WriteLine("删除失败: " + se + " - " + ex.Message);
+                    }
                 }
             }
 
-            ;
             var me = Path.Combine(RunExePath, RunExeName + ".exe");
             foreach (var s1 in Config)
             {
-                if (s1.Key.ToLower() == "Settings".ToLower())
+                if (s1.Key.Equals("Settings", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -161,11 +185,18 @@ namespace RunMe
                 foreach (var se in s1.Value)
                 {
                     var ddd = se.Key;
-                    if (se.Key.ToLower() == RunExeName.ToLower()) continue;
+                    if (se.Key.Equals(RunExeName, StringComparison.OrdinalIgnoreCase)) continue;
                     var df = Path.Combine(RunExePath, ddd + ".exe");
                     if (!File.Exists(df))
                     {
-                        File.Copy(me, df);
+                        try
+                        {
+                            File.Copy(me, df);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine("创建失败: " + df + " - " + ex.Message);
+                        }
                     }
                 }
             }
@@ -181,18 +212,24 @@ namespace RunMe
             using (StreamReader reader = new StreamReader(runFilePath, Encoding.UTF8))
             {
                 string line;
+                var first = true;
                 // 逐行读取文件内容
                 while ((line = reader.ReadLine()) != null)
                 {
-                    // 线程休眠1秒
-                    Thread.Sleep(1000);
+                    if (!first)
+                    {
+                        // 行与行之间间隔 1 秒（首行立即执行）
+                        Thread.Sleep(1000);
+                    }
+
+                    first = false;
 
                     // 运行当前行指定的程序
                     WinExec(line);
                 }
             }
         }
-        private void CmdExec(string command)
+        private void CmdExec(string command, bool runas = false, bool show = false)
         {
             try
             {
@@ -200,10 +237,11 @@ namespace RunMe
                 {
                     FileName = "cmd.exe",
                     Arguments = "/c " + command,
-                    UseShellExecute = false,
-                    CreateNoWindow = false,
+                    UseShellExecute = runas,
+                    CreateNoWindow = !show, // 默认不显示窗口，加 show 标记才显示（提权总会显示）
                     WorkingDirectory = RunExePath
                 };
+                if (runas) startInfo.Verb = "runas"; // 请求提升权限
 
                 Process.Start(startInfo);
             }
@@ -212,7 +250,7 @@ namespace RunMe
                 MessageBox.Show("CMD 启动失败：" + ex.Message);
             }
         }
-        private void PowerShellExec(string command)
+        private void PowerShellExec(string command, bool runas = false, bool show = false)
         {
             if (string.IsNullOrWhiteSpace(command))
             {
@@ -230,10 +268,11 @@ namespace RunMe
                 {
                     FileName = "powershell.exe",
                     Arguments = $"-NoLogo -NoProfile -EncodedCommand {encodedCommand}",
-                    UseShellExecute = false,
-                    CreateNoWindow = false,
+                    UseShellExecute = runas,
+                    CreateNoWindow = !show, // 默认不显示窗口，加 show 标记才显示（提权总会显示）
                     WorkingDirectory = RunExePath
                 };
+                if (runas) startInfo.Verb = "runas"; // 请求提升权限
 
                 Process.Start(startInfo);
             }
@@ -246,6 +285,13 @@ namespace RunMe
         private void RunRunme(string args)
         {
             if (string.IsNullOrEmpty(args)) return;
+
+            // 兼容 "runme 名称|目标,…" 写法（剥离列表标记）
+            if (args.StartsWith("runme ", StringComparison.OrdinalIgnoreCase))
+            {
+                args = args.Substring(6).TrimStart();
+            }
+
             foreach (var se in args.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 var list2 = se.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
@@ -300,6 +346,13 @@ namespace RunMe
             if (_listBox1.Items.Count <= 0) return;
 
             var currentIndex = _listBox1.SelectedIndex;
+            if (currentIndex < 0)
+            {
+                // 没有选中项时先选中第一项
+                _listBox1.SelectedIndex = 0;
+                return;
+            }
+
             if (e.Delta > 0)
             {
                 // 向上滚动
@@ -347,6 +400,11 @@ namespace RunMe
         /// <param name="e">事件参数</param>
         private void ListBox1_DoubleClick(object sender, EventArgs e)
         {
+            if (_listBox1?.SelectedItem == null)
+            {
+                return;
+            }
+
             WinExec(RunDict[_listBox1.SelectedItem.ToString()]);
             Close();
         }
@@ -367,26 +425,6 @@ namespace RunMe
                 string.IsNullOrEmpty(RunExeName) ||
                 string.IsNullOrEmpty(RunExePath)
                ) return;
-            var runExecProcess = ReadValue("ExecProcess", RunExeName);
-            var runExecAdminProcess = ReadValue("ExecAdminProcess", RunExeName);
-            if (!string.IsNullOrEmpty(runExecProcess) || !string.IsNullOrEmpty(runExecAdminProcess))
-            {
-                runExecProcess = string.IsNullOrEmpty(runExecProcess)? runExecAdminProcess: runExecProcess;
-                int requiredParams = GetFormatParameterCount(runExecProcess);
-                var runarg = "";
-                if (requiredParams > 0)
-                {
-                    runExecProcess = ProcessPlaceholders(runExecProcess);
-                    var templist = args.Concat(Enumerable.Repeat(" ", requiredParams)).Take(requiredParams);
-                    runarg = string.Format(runExecProcess, templist.ToArray());
-                }
-                else
-                {
-                    runarg = runExecProcess + " " + string.Join(" ", args);
-                }
-                WinExec(runarg, !string.IsNullOrEmpty(runExecAdminProcess));
-                return;
-            }
 
             // 如果没有传入命令行参数
             if (args.Length == 0)
@@ -401,22 +439,50 @@ namespace RunMe
             {
                 ReplaceAllX();
             }
-            else if (args[0]?.StartsWith("runme ", StringComparison.OrdinalIgnoreCase) == true)
+            else if (args[0]?.Equals("runme", StringComparison.OrdinalIgnoreCase) == true ||
+                     args[0]?.StartsWith("runme ", StringComparison.OrdinalIgnoreCase) == true)
             {
-                if (args.Length < 2) return;
-                RunRunme(string.Join(" ", args.Skip(1)));
-            }
-            else if (args[0]?.StartsWith("list ", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                // 如果参数少于3个
-                if (args.Length < 3) return;
 
-                GetFilesList(args[2], "." + args[1]);
+                var cmdArgs = args.Skip(1).ToList();
+                if (args[0].Length > 5)
+                {
+                    // 兼容 "runme xxx" 引号整串写法
+                    var inline = args[0].Substring(6).Trim();
+                    if (inline.Length > 0)
+                    {
+                        cmdArgs.Insert(0, inline);
+                    }
+                }
+
+                if (cmdArgs.Count == 0) return;
+                RunRunme(string.Join(" ", cmdArgs));
+            }
+            else if (args[0]?.Equals("list", StringComparison.OrdinalIgnoreCase) == true ||
+                     args[0]?.StartsWith("list ", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var listArgs = new List<string>();
+                if (args[0].Length > 4)
+                {
+                    listArgs.AddRange(args[0].Substring(5).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+                }
+                listArgs.AddRange(args.Skip(1));
+
+                // 至少要指定扩展名；目录可省略，默认取程序所在目录
+                if (listArgs.Count < 1) return;
+                var ext = listArgs[0].TrimStart('.');
+                var dir = listArgs.Count > 1 ? listArgs[1] : RunExePath;
+                GetFilesList(dir, "." + ext);
                 ShowListBox();
             }
             else if (args[0].Equals("help", StringComparison.OrdinalIgnoreCase))
             {
                 ShowMessage();
+            }
+            else if (!string.IsNullOrEmpty(ReadValue("Config", RunExeName)))
+            {
+                // 分身带参数运行（如拖拽文件到 exe 上）：执行自身配置，参数供 {0} 填充或追加到命令尾部
+                _extraArgs = args;
+                NoArgs();
             }
             else
             {
@@ -431,109 +497,110 @@ namespace RunMe
         /// </summary>
         private void CfgInit()
         {
-            if (!File.Exists(YanBinCfgPath))
+            if (File.Exists(YanBinCfgPath))
             {
-                var iniData = new Dictionary<string, Dictionary<string, string>>
-                {
-                    {
-                        "Settings",
-                        new Dictionary<string, string>
-                        {
-                            { "RunParentDirectory", RunExePath },
-                            { "ExcludeExeName", "RunMe|MeRun" },
-                            { "变量名1", "这就就是{env.变量名1}的值" },
-                            { "变量名2", "这就就是{env.变量名2}的值" },
-                        }
-                    },
-                    {
-                        "ExecProcess",
-                        new Dictionary<string, string>
-                        {
-                            {
-                                "Nug1",
-                                "dotnet nuget push {0} --api-key {env.变量名1} --source https://api.nuget.org/v3/index.json"
-                            }
-                        }
-                    },
-                    {
-                        "ExecAdminProcess",
-                        new Dictionary<string, string>
-                        {
-                            {
-                                "Nug2",
-                                "dotnet nuget push {0} --api-key {1} --source https://api.nuget.org/v3/index.json # 这样的占位符只能在ExecProcess ExecCmd"
-                            }
-                        }
-                    },
-                    {
-                        "Config",
-                        new Dictionary<string, string>
-                        {
-                            { "RunMe", "runme 中文测试1|RunMe6,中文测试2|RunMe7" },
-                            { "RunMe1", "List exe d:\\" },
-                            { "RunMe2", "List exe tools" },
-                            { "RunMe3", "runme VS Code|vc,VS Studio|vs" },
-                            { "RunMe4", "runme VS Code|c:\\,VS Studio|D:\\" },
-                            { "RunMe5", "vs" },
-                            { "RunMe6", "http:\\www.bing.com" },
-                            { "RunMe7", "help" },
-                        }
-                    }
-                };
-                // 创建INI文件
-                CreateIniFile(YanBinCfgPath, iniData);
+                return;
             }
+
+            // 生成带注释的默认配置：每个功能点一条示例，注释写在配置上方
+            var lines = new List<string>
+            {
+                "# ================= RunMe 使用说明 ==================",
+                "# 改名即用：把 RunMe.exe 改名为入口名（如 Vs.exe），在 [Config] 中配置同名键，",
+                "# 双击分身（如 Vs.exe）即可启动对应程序；一个小 exe 可复制成任意多个“入口”。",
+                "#",
+                "# 占位符（所有配置值中可用）：",
+                "#   {time.格式}         当前时间，如 {time.yyyyMMdd}",
+                "#   {env.变量名}        引用 [Settings] 中的自定义变量",
+                "#   {guid.id}           生成新的 GUID",
+                "#   {random.最小-最大}  生成区间内随机整数（支持负数）",
+                "#   {0} {1} …           命令行参数；带参数运行分身（如拖拽文件到 exe 上）时自动填入",
+                "#",
+                "# 执行方式（写在命令开头；runadmin 与 cmd/ps 顺序任意，[Config] 值与列表条目均可用）：",
+                "#   cmd 命令            用 CMD 执行（可用重定向、管道等）",
+                "#   ps 命令             用 PowerShell 执行",
+                "#   runadmin            管理员权限（例：runadmin cmd xxx、cmd runadmin xxx、ps runadmin xxx）",
+                "#   show                显示窗口执行（默认不显示窗口；可与 cmd/ps 任意组合，例：show cmd xxx、cmd show xxx）",
+                "#   都不加              直接启动；裸命令（dotnet、git、notepad…）按系统 PATH 查找",
+                "",
+                "[Settings]",
+                "# 相对路径的基准目录（一般保持为程序所在目录）",
+                $"RunParentDirectory={RunExePath}",
+                "# list 模式排除名单（| 分隔、不含扩展名；仅 list 生效，[Config] 列表不受影响）",
+                "ExcludeExeName=RunMe|MeRun",
+                "# 自定义变量：供 {env.变量名} 引用",
+                "apiKey=你的密钥",
+                "",
+                "[Config]",
+                "# 键 = 分身 exe 名（不含 .exe）；值 = 启动目标（路径 / 命令 / 显示名|目标,… 列表）",
+                "",
+                "# ① 绝对路径：双击 Pg.exe 直接启动",
+                "Pg=C:\\Windows\\System32\\notepad.exe",
+                "",
+                "# ② 相对路径：基于 [Settings] RunParentDirectory 拼接",
+                "Rel=Tools\\SomeTool\\tool.exe",
+                "",
+                "# ③ 路径：绝对路径直接运行；相对路径前缀 pf\\ = C~G 盘 Program Files、pf86\\ = Program Files (x86)、",
+                "#    AppData = 用户目录、..\\ = 上一级目录，其余相对路径以 [Settings] RunParentDirectory 为基础拼接",
+                "Firefox=pf\\Mozilla Firefox\\firefox.exe",
+                "",
+                "# ④ 网址与目录：直接打开",
+                "Bing=https://www.bing.com",
+                "Docs=Docs\\手册",
+                "",
+                "# ⑤ 裸命令：按系统 PATH 查找（无需加 cmd）",
+                "IPConfig=ipconfig",
+                "",
+                "# ⑥ cmd 前缀：需要 CMD 特性（重定向、管道、start 等）时使用",
+                "WinCalc=cmd start \"\" shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",
+                "",
+                "# ⑦ ps 前缀：用 PowerShell 执行",
+                "HelloPS=ps echo hello > \"$HOME\\hello.txt\"",
+                "",
+                "# ⑧ 多条目列表：值以 runme 开头 + 显示名|目标,…（单条直接启动，多条弹列表）",
+                "#    列表窗口：Enter 启动 / Shift+Enter 管理员启动 / Esc 关闭",
+                "Dev=runme 7-Zip|pf\\7-Zip\\7zFM.exe,Notepad++|pf\\Notepad++\\notepad++.exe",
+                "Tools=runme 记事本|notepad,计算器|cmd start calc",
+                "",
+                "# ⑨ 占位符：{time.*} {env.*} {guid.*} {random.*} 在执行时自动替换",
+                "Tmp=cmd echo {time.yyyyMMdd}-{random.1-99} > \"%TEMP%\\{guid.id}.txt\"",
+                "",
+                "# ⑩ 参数：带参数运行分身（如拖拽文件到 exe 上）时 {0} 自动填入",
+                "Deploy=dotnet publish {0} -c Release",
+                "",
+                "# ⑪ 批量启动：新建 {分身名}run.txt（如 Pgrun.txt），每行一个程序，双击分身按行依次启动",
+                "",
+                "# ⑫ 管理员权限：命令中带 runadmin 一词即管理员（与 cmd / ps 顺序任意），执行时弹 UAC 确认",
+                "Hosts=cmd runadmin notepad C:\\Windows\\System32\\drivers\\etc\\hosts",
+                "",
+                "# ================= 命令行命令（如 Vs.exe 后跟） ==================",
+                "#   help                    显示帮助",
+                "#   list 扩展名 [目录]      列出目录中指定后缀的文件供选择（目录缺省为本目录）",
+                "#   runme 显示名|目标,…    临时列表（单条直接启动，多条弹列表）",
+                "#   runmeth                 目录中其它 exe 全部替换为当前 exe",
+                "#   runmefth                按 [Config] 的键批量生成分身（已存在不覆盖）",
+                ""
+            };
+
+            // 创建默认配置文件
+            CreateIniFile(YanBinCfgPath, lines);
         }
 
         /// <summary>
-        /// 创建一个UTF-16编码、LF换行符的INI文件
+        /// 创建默认的 YanBinCfg.ini（UTF-8 with BOM）
         /// </summary>
         /// <param name="filePath">文件路径</param>
-        /// <param name="iniContent">INI内容</param>
-        private void CreateIniFile(string filePath, Dictionary<string, Dictionary<string, string>> iniContent)
+        /// <param name="lines">文件内容行</param>
+        private void CreateIniFile(string filePath, IEnumerable<string> lines)
         {
-            var content = new StringBuilder();
-
-            content.AppendLine(@"#以下全局可用");
-            content.AppendLine(@"#{time.格式} - 使用当前时间并按照指定格式格式化");
-            content.AppendLine(@"#{env.变量名} - 获取指定的环境变量值 在Settings项中设置");
-            content.AppendLine(@"#{guid.id} - 生成一个新的 GUID");
-            content.AppendLine(@"#{random.最小值-最大值} - 生成指定范围内的随机数");
-            content.AppendLine(); // 添加空行分隔段落
-            content.AppendLine(@"#占位符{0} 只能在ExecCmd与ExecProcess使用");
-            content.AppendLine(); // 添加空行分隔段落
-
-            foreach (var section in iniContent)
+            try
             {
-                if (section.Key.ToLower() == "Config".ToLower())
-                {
-                    content.AppendLine(); // 添加空行分隔段落
-                    content.AppendLine(@"#以下Config可用");
-                    content.AppendLine(@"#pf = 从C到G盘的Program Files目录");
-                    content.AppendLine(@"#pf86 = 从C到G盘的Program Files (x86)目录)");
-                    content.AppendLine(@"#AppData = 用户目录");
-                    content.AppendLine(@"#Config 可以使用CMD 或PS PowerShell 指定运行方式 可以不加就是默认启动");
-                    content.AppendLine(); // 添加空行分隔段落
-                }
-
-                content.AppendLine($"[{section.Key}]");
-
-
-                foreach (var keyValue in section.Value)
-                {
-                    content.AppendLine($"{keyValue.Key}={keyValue.Value}");
-                }
-
-                content.AppendLine(); // 添加空行分隔段落
+                File.WriteAllText(filePath, string.Join(Environment.NewLine, lines), Encoding.UTF8);
             }
-
-            // 使用UTF-8 with BOM编码保存文件
-            File.WriteAllText(filePath, content.ToString(), Encoding.UTF8);
-
-            // // 将CRLF替换为LF（如果有）
-            // var fileContent = File.ReadAllText(filePath, Encoding.UTF8);
-            // fileContent = fileContent.Replace("\r\n", "\n");
-            // File.WriteAllText(filePath, fileContent, Encoding.UTF8);
+            catch (Exception ex)
+            {
+                Debug.WriteLine("创建默认配置失败: " + ex.Message);
+            }
         }
 
         /// <summary>
@@ -576,12 +643,12 @@ namespace RunMe
                                     currentSectionDict = value;
                                 }
                             }
-                            // 处理键值对
-                            else if (line.Contains("=") && !string.IsNullOrEmpty(currentSection))
+                            // 处理键值对（允许空值：用 IndexOf 切分，避免空段异常中断整份解析）
+                            else if (line.IndexOf('=') > 0 && !string.IsNullOrEmpty(currentSection))
                             {
-                                var parts = line.Split(new[] { '=' }, 2, StringSplitOptions.RemoveEmptyEntries);
-                                string key = parts[0].Trim();
-                                string value = parts[1].Trim();
+                                var eqIndex = line.IndexOf('=');
+                                string key = line.Substring(0, eqIndex).Trim();
+                                string value = line.Substring(eqIndex + 1).Trim();
 
                                 // 确保当前节字典存在
                                 if (currentSectionDict == null)
@@ -599,6 +666,7 @@ namespace RunMe
             }
             catch (Exception ex)
             {
+                Debug.WriteLine("配置解析失败: " + ex.Message);
             }
         }
 
@@ -659,26 +727,34 @@ namespace RunMe
                 if (content.StartsWith("env.", StringComparison.OrdinalIgnoreCase))
                 {
                     var envVar = content.Substring(4);
-                    return ReadValue("Settings", envVar);
+                    return ReadValue("Settings", envVar) ?? "";
                 }
 
-                // 处理 GUID 生成
-                if (content.Equals("guid.", StringComparison.OrdinalIgnoreCase))
+                // 处理 GUID 生成（{guid.后缀}，后缀忽略）
+                if (content.StartsWith("guid.", StringComparison.OrdinalIgnoreCase))
                 {
                     return Guid.NewGuid().ToString();
                 }
 
-                // 处理随机数 {random.min-max}
+                // 处理随机数 {random.min-max}（支持负数；最小大于最大时自动交换）
                 if (content.StartsWith("random.", StringComparison.OrdinalIgnoreCase))
                 {
-                    var randomParams = content.Substring(7);
-                    var parts = randomParams.Split('-');
-                    if (parts.Length == 2 &&
-                        int.TryParse(parts[0], out int min) &&
-                        int.TryParse(parts[1], out int max))
+                    var randomMatch = Regex.Match(content.Substring(7), @"^(-?\d+)-(-?\d+)$");
+                    if (randomMatch.Success)
                     {
-                        var random = new Random();
-                        return random.Next(min, max + 1).ToString();
+                        var min = int.Parse(randomMatch.Groups[1].Value);
+                        var max = int.Parse(randomMatch.Groups[2].Value);
+                        if (min > max)
+                        {
+                            var tmp = min;
+                            min = max;
+                            max = tmp;
+                        }
+
+                        lock (RandomPicker)
+                        {
+                            return RandomPicker.Next(min, max + 1).ToString();
+                        }
                     }
                 }
 
@@ -710,6 +786,23 @@ namespace RunMe
 
 
             if (upath.Length > 3 && upath.Substring(1, 2) == ":\\")
+            {
+                return upath;
+            }
+
+            // cmd / ps / powershell / runadmin / show 标记开头的命令不做路径解析
+            if (upath.StartsWith("cmd ", StringComparison.OrdinalIgnoreCase) ||
+                upath.StartsWith("ps ", StringComparison.OrdinalIgnoreCase) ||
+                upath.StartsWith("powershell ", StringComparison.OrdinalIgnoreCase) ||
+                upath.StartsWith("runadmin ", StringComparison.OrdinalIgnoreCase) ||
+                upath.StartsWith("show ", StringComparison.OrdinalIgnoreCase))
+            {
+                return upath;
+            }
+
+            // 无路径分隔符且无扩展名的裸命令词（如 dotnet、git、notepad）交给系统按 PATH 查找，不做路径拼接
+            if (upath.IndexOfAny(new[] { '\\', '/', ':' }) < 0 &&
+                string.IsNullOrEmpty(Path.GetExtension(upath)))
             {
                 return upath;
             }
@@ -870,6 +963,17 @@ namespace RunMe
                         string arguments = input.Substring(exeEndIndex + 5).TrimStart(); // +5跳过".exe "
                         return (exePath, arguments);
                     }
+
+                    // 兜底：首个词是不带路径分隔符的裸命令词（如 dotnet、git）时，按首个空格分离
+                    int spaceIndex = input.IndexOf(' ');
+                    if (spaceIndex > 0)
+                    {
+                        var head = input.Substring(0, spaceIndex);
+                        if (head.IndexOfAny(new[] { '\\', '/', ':' }) < 0)
+                        {
+                            return (head, input.Substring(spaceIndex + 1).TrimStart());
+                        }
+                    }
                 }
 
                 // 如果没有找到空格
@@ -927,6 +1031,13 @@ namespace RunMe
         /// <param name="suffix"></param>
         private void GetFilesList(string path, string suffix)
         {
+            // 目录不存在时给出提示并返回，避免未处理异常导致程序崩溃
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            {
+                MessageBox.Show($@"目录不存在: {path}");
+                return;
+            }
+
             var list = ReadValue("Settings", "ExcludeExeName")
                 ?.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
             if (list == null || list.Length < 1 || string.IsNullOrEmpty(list[0]))
@@ -934,17 +1045,25 @@ namespace RunMe
                 list = new[] { "RunMe", "MeRun" };
             }
 
-            // 遍历所有文件
-            foreach (string file in Directory.GetFiles(path))
+            try
             {
-                // 创建文件信息对象
-                FileInfo info = new FileInfo(file);
-                // 如果文件扩展名匹配且文件名不等于当前主模块名
-                var name = Regex.Replace(info.Name, info.Extension, "", RegexOptions.IgnoreCase);
-                if (info.Extension.ToLower() == suffix.ToLower() && !list.Contains(name))
+                // 遍历所有文件
+                foreach (string file in Directory.GetFiles(path))
                 {
-                    RunDict[info.Name.Replace(suffix, "")] = info.FullName;
+                    // 创建文件信息对象
+                    FileInfo info = new FileInfo(file);
+                    // 如果文件扩展名匹配且文件名不在排除名单中（忽略大小写）
+                    var name = Path.GetFileNameWithoutExtension(info.Name);
+                    if (info.Extension.Equals(suffix, StringComparison.OrdinalIgnoreCase) &&
+                        !list.Any(x => x.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        RunDict[name] = info.FullName;
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($@"读取目录失败: {ex.Message}");
             }
         }
 
@@ -960,13 +1079,6 @@ namespace RunMe
 
             IsClose = false;
             var height = GetListheight();
-            // 如果高度仍为初始值（没有找到匹配的文件）
-            if (height == ItemHeight)
-            {
-                // 设置窗体应该关闭
-                IsClose = true;
-                return;
-            }
 
             // 创建一个新的列表框控件
             _listBox1 = new ListBox();
@@ -1017,12 +1129,44 @@ namespace RunMe
         private void ShowMessage()
         {
             // 显示帮助信息消息框
-            MessageBox.Show(@"看配置文件", @"使用帮助");
+            var help = string.Join(Environment.NewLine, new[]
+            {
+                "改名即用：把本 exe 改名为入口名（如 Vs.exe），在 YanBinCfg.ini 的 [Config] 中配置同名键。",
+                "",
+                "  Vs=程序或路径                       双击直接启动",
+                "  Dev=runme 名称1|目标1,名称2|目标2   双击弹出列表选择（runme 是列表标记）",
+                "",
+                "值支持的写法（配置文件、列表条目目标、run.txt 行通用）：",
+                "  · cmd / ps / powershell 命令         用 CMD 或 PowerShell 执行",
+                "  · runadmin 目标                      管理员权限（与 cmd / ps 顺序任意：cmd runadmin xxx、ps runadmin xxx）",
+                "  · show 目标                          显示窗口运行（默认不显示，例：show cmd xxx、cmd show xxx；提权时总显示）",
+                "  · 裸命令                             dotnet、git、notepad 等按系统 PATH 直接执行",
+                "  · 网址 / 目录 / 文件                 https://…、目录、文档交给系统默认方式打开",
+                "  · 占位符                             {time.格式} {env.变量名} {guid.id} {random.最小-最大}",
+                "  · {0}{1}…                            带参数运行分身（如拖拽文件到 exe 上）时自动填入",
+                "  · 路径                               绝对路径直接运行；相对路径支持 pf\\、pf86\\、AppData、..\\ 前缀，其余按基准目录拼接",
+                "",
+                "列表窗口：Enter 启动 / Shift+Enter 管理员启动 / 双击启动 / 滚轮切换 / Esc 关闭",
+                "",
+                "批量启动：新建 {分身名}run.txt（如 Vsrun.txt），每行一个目标，双击分身按行依次启动",
+                "",
+                "配置：[Settings] RunParentDirectory=相对路径基准目录；ExcludeExeName=list 模式的排除名单",
+                "",
+                "其他命令（命令行传递）：",
+                "  runme 显示名|目标,…    临时列表（单条直接启动，多条弹列表）",
+                "  list 扩展名 [目录]     列出目录中指定后缀的文件供选择（目录缺省为本目录）",
+                "  runmeth                目录中其它 exe 全部替换为当前 exe",
+                "  runmefth               按 [Config] 的键批量生成分身（已存在不覆盖）",
+                "  help                   显示本帮助",
+                "",
+                "注：值以 runme 开头即为列表（显示名|目标,…），不带则整条按单条命令执行；详细说明见 YanBinCfg.ini 注释与 README.md"
+            });
+            MessageBox.Show(help, @"使用帮助");
         }
 
         #endregion
 
-        #region DllImport
+        #region 进程启动
 
         /// <summary>
         /// 运行指定路径的程序
@@ -1030,28 +1174,105 @@ namespace RunMe
         /// <param name="upath">程序路径</param>
         private void WinExec(string upath, bool runas = false)
         {
-            var test = upath.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries); 
-            if (test[0]?.Equals("cmd", StringComparison.OrdinalIgnoreCase) == true)
+            if (string.IsNullOrWhiteSpace(upath))
             {
-                if (test.Length < 2) return;
-                CmdExec(string.Join(" ", test.Skip(1)));
                 return;
             }
-            
-            if (test[0]?.Equals("ps", StringComparison.OrdinalIgnoreCase) == true ||
-                     test[0]?.Equals("powershell", StringComparison.OrdinalIgnoreCase) == true)
+
+            // 全局占位符替换（{time.*}/{env.*}/{guid.*}/{random.*}），cmd / ps 命令同样生效
+            upath = ProcessPlaceholders(upath);
+
+            // {0}{1}… 参数填充（带参数运行分身或模板时）；值不含占位符时把参数追加到命令尾部
+            var requiredParams = GetFormatParameterCount(upath);
+            if (requiredParams > 0)
             {
-                if (test.Length < 2)
+                upath = FillFormatArgs(upath, requiredParams);
+            }
+            else if (_extraArgs != null && _extraArgs.Length > 0)
+            {
+                upath += " " + string.Join(" ", _extraArgs);
+            }
+
+            // 执行标记解析：从命令开头逐个取词，runadmin（管理员）/ show（显示窗口）与 cmd / ps / powershell 顺序任意
+            // 默认不显示窗口；例：runadmin cmd xxx、cmd show xxx、show ps xxx、ps show xxx
+            var body = upath.TrimStart();
+            var shell = "";
+            var show = false;
+
+            while (true)
+            {
+                var sp = body.IndexOf(' ');
+                var word = sp < 0 ? body : body.Substring(0, sp);
+
+                if (word.Equals("runadmin", StringComparison.OrdinalIgnoreCase))
                 {
-                    return;
+                    runas = true;
+                }
+                else if (word.Equals("show", StringComparison.OrdinalIgnoreCase))
+                {
+                    show = true;
+                }
+                else if (word.Equals("cmd", StringComparison.OrdinalIgnoreCase))
+                {
+                    shell = "cmd";
+                }
+                else if (word.Equals("ps", StringComparison.OrdinalIgnoreCase) ||
+                         word.Equals("powershell", StringComparison.OrdinalIgnoreCase))
+                {
+                    shell = "ps";
+                }
+                else
+                {
+                    break; // 首个非标记词即是命令体开始
                 }
 
-                PowerShellExec(string.Join(" ", test.Skip(1)));
+                if (sp < 0)
+                {
+                    body = ""; // 只有标记词，没有命令体
+                    break;
+                }
+
+                body = body.Substring(sp + 1).TrimStart();
+            }
+
+            if (body.Length == 0)
+            {
+                return; // 无有效命令：不执行
+            }
+
+            if (shell == "cmd")
+            {
+                CmdExec(body, runas, show);
                 return;
             }
-            var (a, b) = ProcessString(upath, false);
-            StartProcess(ProcessPath(a, RunParentDirectory), b, runas);
 
+            if (shell == "ps")
+            {
+                PowerShellExec(body, runas, show);
+                return;
+            }
+
+            var (a, b) = ProcessString(body, false);
+            StartProcess(ProcessPath(a, RunParentDirectory), b, runas, show);
+        }
+
+        /// <summary>
+        /// 将命令行参数填入 {0}{1}… 占位符（不足补空格，多余忽略；格式非法时原样返回）
+        /// </summary>
+        private string FillFormatArgs(string format, int requiredParams)
+        {
+            try
+            {
+                var source = _extraArgs ?? new string[0];
+                var values = source.Concat(Enumerable.Repeat(" ", requiredParams))
+                    .Take(requiredParams)
+                    .ToArray();
+                return string.Format(format, values);
+            }
+            catch
+            {
+                return format;
+            }
         }
 
 
@@ -1060,17 +1281,18 @@ namespace RunMe
         /// </summary>
         /// <param name="fileName">要启动的程序路径</param>
         /// <param name="arguments">程序参数（可选）</param>
-        private void StartProcess(string fileName, string arguments = null, bool runas = false)
+        private void StartProcess(string fileName, string arguments = null, bool runas = false, bool show = false)
         {
             try
             {
                 ProcessStartInfo startInfo = new ProcessStartInfo();
-                startInfo.UseShellExecute = true;
-                startInfo.CreateNoWindow = true;
+                // 默认不显示窗口（无 shell 方式启动）；加 show 或提权时用 shell 方式启动（控制台窗口可见）
+                startInfo.UseShellExecute = show || runas;
+                startInfo.CreateNoWindow = !show;
                 if (!string.IsNullOrEmpty(arguments))
                 {
                     startInfo.FileName = fileName;
-                    startInfo.Arguments = ProcessPlaceholders(arguments);
+                    startInfo.Arguments = arguments;
                     if (runas) startInfo.Verb = "runas"; // 请求提升权限
                 }
                 else
@@ -1080,10 +1302,16 @@ namespace RunMe
                         startInfo.Verb = "runas"; // 请求提升权限
                         startInfo.FileName = fileName;
                     }
+                    else if (fileName.IndexOfAny(new[] { '\\', '/', ':' }) < 0 &&
+                             string.IsNullOrEmpty(Path.GetExtension(fileName)))
+                    {
+                        // 裸命令（如 notepad）：直接启动，交给系统按 PATH 查找
+                        startInfo.FileName = fileName;
+                    }
                     else
                     {
                         startInfo.FileName = "explorer.exe";
-                        startInfo.Arguments = ProcessPlaceholders(fileName);
+                        startInfo.Arguments = fileName;
                     }
                 }
                 Process.Start(startInfo);
@@ -1095,15 +1323,6 @@ namespace RunMe
             }
         }
 
-
-        /// <summary>
-        /// 调用Windows API执行程序
-        /// </summary>
-        /// <param name="exeName">要执行的程序名和参数</param>
-        /// <param name="operType">操作类型</param>
-        /// <returns>执行结果</returns>
-        [DllImport("kernel32.dll")]
-        private static extern int WinExec(string exeName, int operType);
 
         #endregion
     }
